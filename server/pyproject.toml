@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smart-invoice-scheduler"
+version = "0.1.0"
+description = "Smart Invoice Scheduler System"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    {name = "Smart Invoice Scheduler Team"},
+]
+keywords = ["invoice", "scheduler", "fastapi"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+
+dependencies = [
+    "fastapi>=0.104.1",
+    "uvicorn[standard]>=0.24.0",
+    "python-multipart>=0.0.6",
+    "pydantic[email]>=2.5.0",
+    # Google Cloud services
+    "google-cloud-aiplatform>=1.38.0",
+    "google-cloud-storage>=2.10.0",
+    "vertexai>=1.0.0",
+    # LangChain with Google integration
+    "langchain>=0.1.0",
+    "langchain-google-vertexai>=1.0.0",
+    "langchain-google-genai>=1.0.0",
+    # Authentication
+    "PyJWT>=2.8.0",
+    "bcrypt>=4.0.0",
+    # Additional utilities
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "httpx>=0.25.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/example/smart-invoice-scheduler"
+Repository = "https://github.com/example/smart-invoice-scheduler.git"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
