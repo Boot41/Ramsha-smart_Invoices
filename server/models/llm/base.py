@@ -11,6 +11,6 @@ load_dotenv(dotenv_path=env_path)
 
 def get_model():
     vertexai.init(project=os.getenv("PROJECT_ID"), location=REGIONS[random.randint(0, 25)])  
-    model = GenerativeModel("gemini-1.5-pro-001") 
+    model = GenerativeModel("gemini-2.0-flash") 
     return model
 

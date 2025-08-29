@@ -28,7 +28,7 @@ def get_pinecone_client():
             pc = Pinecone(api_key=api_key)
             
             # Get the index
-            index_name = os.getenv("PINECONE_INDEX_NAME", "smart-invoice-contracts")
+            index_name = os.getenv("PINECONE_INDEX_NAME", "contracts")
             _pinecone_client = pc.Index(index_name)
             
             logger.info(f"✅ Pinecone client initialized with index: {index_name}")
