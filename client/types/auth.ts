@@ -47,7 +47,16 @@ export interface UserRegistrationRequest {
 export interface UserRegistrationResponse {
   success: boolean;
   message: string;
-  user: User;
+  user_id?: string;
+  email: string;
+  role: string;
+  verification_required?: boolean;
+  verification_method?: string;
+  access_token?: string;
+  token_type?: string;
+  expires_in?: number;
+  user?: User;
+  permissions?: any;
 }
 
 export interface UserCreate {
@@ -70,8 +79,6 @@ export interface SignupData {
   password: string;
   firstName: string;
   lastName: string;
-  company?: string;
-  phone?: string;
 }
 
 export interface EnterpriseSignupData extends SignupData {

@@ -17,18 +17,17 @@ class AuthStatus(str, Enum):
 class UserRegistrationRequest(BaseModel):
     email: EmailStr = Field(..., description="User email address")
     password: str = Field(..., min_length=8, description="Password (min 8 characters)")
-    confirm_password: str = Field(..., description="Password confirmation")
-    name: str = Field(..., min_length=2, max_length=100, description="Full name")
+    first_name: str = Field(..., min_length=2, max_length=50, description="First name")
+    last_name: str = Field(..., min_length=2, max_length=50, description="Last name")
     phone: Optional[str] = Field(None, description="Phone number")
-    role: UserRole = Field(..., description="User role (tenant or rent_payer)")
+    role: UserRole = Field(UserRole.TENANT, description="User role (default: tenant)")
     address: Optional[AddressCreate] = Field(None, description="User address")
     tenant_email: Optional[EmailStr] = Field(None, description="Associated tenant email (for rent_payers)")
     
-    @validator('confirm_password')
-    def passwords_match(cls, v, values):
-        if 'password' in values and v != values['password']:
-            raise ValueError('Passwords do not match')
-        return v
+    @property
+    def name(self) -> str:
+        return f"{self.first_name} {self.last_name}"
+    
     
     @validator('tenant_email')
     def validate_tenant_email(cls, v, values):

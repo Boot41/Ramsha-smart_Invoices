@@ -22,8 +22,8 @@ class DatabaseService:
     def __init__(self):
         logger.info("✅ Database Service initialized")
     
-    async def get_session(self) -> AsyncSession:
-        """Get database session"""
+    def get_session(self):
+        """Get database session as context manager"""
         return AsyncSessionLocal()
     
     # User Operations
@@ -62,7 +62,8 @@ class DatabaseService:
                 # Create user
                 user = User(
                     email=registration.email.lower().strip(),
-                    name=registration.name,
+                    first_name=registration.first_name,
+                    last_name=registration.last_name,
                     phone=registration.phone,
                     role=UserRole(registration.role.value),
                     status=UserStatus.ACTIVE,

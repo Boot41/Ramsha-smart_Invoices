@@ -12,7 +12,7 @@ interface AuthState {
 
 interface AuthActions {
   login: (credentials: { email: string; password: string }) => Promise<void>;
-  register: (userData: { username: string; email: string; password: string }) => Promise<void>;
+  register: (userData: { email: string; password: string; first_name: string; last_name: string }) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
   clearError: () => void;
@@ -35,11 +35,13 @@ export const useAuthStore = create<AuthStore>()(
       login: async (credentials) => {
         set({ isLoading: true, error: null });
         try {
-          await authApi.login(credentials);
+          const response = await authApi.login(credentials);
+          
+          // Token is already stored in authApi.login, but let's get user info
           const currentUser = authApi.getCurrentUser();
           
           set({
-            user: currentUser,
+            user: response.user || currentUser,
             isAuthenticated: true,
             isLoading: false,
             error: null
@@ -58,8 +60,20 @@ export const useAuthStore = create<AuthStore>()(
       register: async (userData) => {
         set({ isLoading: true, error: null });
         try {
-          await authApi.register(userData);
-          set({ isLoading: false, error: null });
+          const response = await authApi.register(userData);
+          
+          // If registration returns a token and user (auto-login), set them
+          if (response.access_token && response.user) {
+            const currentUser = authApi.getCurrentUser();
+            set({
+              user: response.user || currentUser,
+              isAuthenticated: true,
+              isLoading: false,
+              error: null
+            });
+          } else {
+            set({ isLoading: false, error: null });
+          }
         } catch (error: any) {
           set({
             error: error.message || 'Registration failed',

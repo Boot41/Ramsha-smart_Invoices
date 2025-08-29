@@ -80,7 +80,8 @@ class User(Base):
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     email = Column(String(255), nullable=False, unique=True, index=True)
-    name = Column(String(255), nullable=False)
+    first_name = Column(String(100), nullable=False)
+    last_name = Column(String(100), nullable=False)
     phone = Column(String(20), nullable=True)
     password_hash = Column(String(255), nullable=False)
     role = Column(SQLEnum(UserRole), nullable=False)
@@ -109,6 +110,11 @@ class User(Base):
     
     # Relationships
     address = relationship("Address", backref="users")
+    
+    @property
+    def name(self) -> str:
+        """Get full name"""
+        return f"{self.first_name} {self.last_name}"
     
     def set_password(self, password: str):
         """Set new password (hashed)"""

@@ -438,8 +438,10 @@ class AuthController:
             errors.append("Email address is too long")
         
         # Name validation
-        if len(registration.name.strip()) < 2:
-            errors.append("Name must be at least 2 characters long")
+        if len(registration.first_name.strip()) < 2:
+            errors.append("First name must be at least 2 characters long")
+        if len(registration.last_name.strip()) < 2:
+            errors.append("Last name must be at least 2 characters long")
         
         return errors
     

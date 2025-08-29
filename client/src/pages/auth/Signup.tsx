@@ -9,14 +9,12 @@ import type { SignupData } from '../../../types';
 
 const Signup: React.FC = () => {
   const navigate = useNavigate();
-  const { register, isLoading, error, clearError } = useAuth();
+  const { register, isLoading, error, clearError, isAuthenticated } = useAuth();
   const [formData, setFormData] = useState<SignupData>({
     email: '',
     password: '',
     firstName: '',
-    lastName: '',
-    company: '',
-    phone: ''
+    lastName: ''
   });
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errors, setErrors] = useState<Partial<SignupData & { confirmPassword: string }>>({});
@@ -47,15 +45,21 @@ const Signup: React.FC = () => {
 
     try {
       await register({
-        username: `${formData.firstName} ${formData.lastName}`,
         email: formData.email,
-        password: formData.password
+        password: formData.password,
+        first_name: formData.firstName,
+        last_name: formData.lastName
       });
       
-      // Redirect to login or dashboard after successful registration
-      navigate('/auth/login', { 
-        state: { message: 'Account created successfully! Please login.' }
-      });
+      // Check if user is now authenticated (auto-login after registration)
+      // If authenticated, go to dashboard; otherwise go to login
+      if (isAuthenticated) {
+        navigate('/dashboard');
+      } else {
+        navigate('/auth/login', { 
+          state: { message: 'Account created successfully! Please login.' }
+        });
+      }
     } catch (err: any) {
       setErrors({ email: err.message || 'Registration failed' });
     }
@@ -133,43 +137,18 @@ const Signup: React.FC = () => {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                  <Input
-                    label="Email Address"
-                    type="email"
-                    placeholder="john@example.com"
-                    value={formData.email}
-                    onChange={handleChange('email')}
-                    error={errors.email}
-                    required
-                  />
-                  <Input
-                    label="Phone Number"
-                    type="tel"
-                    placeholder="+1 (555) 000-0000"
-                    value={formData.phone}
-                    onChange={handleChange('phone')}
-                    hint="Optional"
-                  />
-                </div>
-              </div>
-
-              {/* Business Information */}
-              <div>
-                <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center">
-                  <span className="bg-gradient-to-r from-green-500 to-blue-500 bg-clip-text text-transparent mr-2">
-                    🏢
-                  </span>
-                  Business Information
-                </h3>
                 <Input
-                  label="Company Name"
-                  placeholder="Your Company Inc."
-                  value={formData.company}
-                  onChange={handleChange('company')}
-                  hint="Optional - Can be added later"
+                  label="Email Address"
+                  type="email"
+                  placeholder="john@example.com"
+                  value={formData.email}
+                  onChange={handleChange('email')}
+                  error={errors.email}
+                  required
+                  className="mt-4"
                 />
               </div>
+
 
               {/* Security */}
               <div>

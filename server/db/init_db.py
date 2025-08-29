@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from sqlalchemy.exc import SQLAlchemyError
-from db.postgresdb import engine, Base
+from .postgresdb import engine, Base
 from models.database_models import User, Address, SecurityEvent, UserSession
 
 logger = logging.getLogger(__name__)

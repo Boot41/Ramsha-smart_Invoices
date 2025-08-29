@@ -168,7 +168,7 @@ const Navbar: React.FC<NavbarProps> = ({ toggleSidebar }) => {
                 <User className="w-5 h-5 text-white" />
               </div>
               <div className="hidden sm:block">
-                <p className="text-sm font-medium text-gray-900">{user?.username || 'User'}</p>
+                <p className="text-sm font-medium text-gray-900">{user ? `${user.firstName} ${user.lastName}` : 'User'}</p>
                 <p className="text-xs text-gray-500">{user?.role || 'Member'}</p>
               </div>
               <Button 

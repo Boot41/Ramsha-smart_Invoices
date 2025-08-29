@@ -1,8 +1,5 @@
 import type { 
   User, 
-  UserCreate, 
-  LoginRequest, 
-  TokenResponse, 
   UserLoginRequest,
   UserLoginResponse,
   UserRegistrationRequest,
@@ -37,11 +34,18 @@ export class AuthApi {
   }
 
   static async register(userData: UserRegistrationRequest): Promise<UserRegistrationResponse> {
-    return apiClient.post<UserRegistrationResponse>(
+    const response = await apiClient.post<UserRegistrationResponse>(
       API_ENDPOINTS.AUTH.REGISTER,
       userData,
       { requiresAuth: false }
     );
+    
+    // Store token in localStorage if returned (auto-login after registration)
+    if (response.access_token) {
+      localStorage.setItem(TOKEN_STORAGE_KEY, response.access_token);
+    }
+    
+    return response;
   }
 
   static async logout(): Promise<{ success: boolean; message: string }> {
