@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { useAuth } from '../../../hooks/useAuth';
 import type { SignupData } from '../../../types';
 
 const Signup: React.FC = () => {
+  const navigate = useNavigate();
+  const { register, isLoading, error, clearError } = useAuth();
   const [formData, setFormData] = useState<SignupData>({
     email: '',
     password: '',
@@ -15,7 +19,6 @@ const Signup: React.FC = () => {
     phone: ''
   });
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Partial<SignupData & { confirmPassword: string }>>({});
 
   const validateForm = (): boolean => {
@@ -40,19 +43,21 @@ const Signup: React.FC = () => {
     e.preventDefault();
     if (!validateForm()) return;
 
-    setLoading(true);
+    clearError();
 
     try {
-      // Mock signup logic
-      console.log('Signup attempt:', formData);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await register({
+        username: `${formData.firstName} ${formData.lastName}`,
+        email: formData.email,
+        password: formData.password
+      });
       
-      // Simulate success
-      alert('Account created successfully! (Mock implementation)');
-    } catch (err) {
-      setErrors({ email: 'Email already exists or server error' });
-    } finally {
-      setLoading(false);
+      // Redirect to login or dashboard after successful registration
+      navigate('/auth/login', { 
+        state: { message: 'Account created successfully! Please login.' }
+      });
+    } catch (err: any) {
+      setErrors({ email: err.message || 'Registration failed' });
     }
   };
 
@@ -96,6 +101,12 @@ const Signup: React.FC = () => {
 
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-6">
+              {/* Global error message */}
+              {error && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-600">{error}</p>
+                </div>
+              )}
               {/* Personal Information */}
               <div>
                 <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center">
@@ -218,9 +229,9 @@ const Signup: React.FC = () => {
                 variant="gradient"
                 size="lg"
                 fullWidth
-                loading={loading}
+                loading={isLoading}
               >
-                {loading ? 'Creating Account...' : 'Create Account'}
+                {isLoading ? 'Creating Account...' : 'Create Account'}
               </Button>
 
               <div className="text-center">

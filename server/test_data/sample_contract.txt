@@ -1,0 +1,67 @@
+SERVICE AGREEMENT
+
+This Service Agreement ("Agreement") is entered into on January 15, 2024 ("Effective Date") between:
+
+CLIENT:
+TechCorp Solutions Inc.
+123 Business Avenue
+San Francisco, CA 94105
+Email: billing@techcorp.com
+Phone: (555) 123-4567
+Tax ID: 12-3456789
+
+SERVICE PROVIDER:
+Digital Marketing Experts LLC
+456 Marketing Street
+New York, NY 10001
+Email: invoices@digitalexperts.com
+Phone: (555) 987-6543
+Tax ID: 98-7654321
+
+CONTRACT TERMS:
+
+1. SERVICES
+The Service Provider will provide the following services:
+- Digital marketing consulting services
+- Social media management
+- Content creation and strategy
+- Analytics and reporting
+
+2. PAYMENT TERMS
+- Monthly retainer fee: $8,500.00 USD
+- Payment due: Net 30 days from invoice date
+- Late payment fee: 2% per month on overdue amounts
+- Additional services: $150.00 per hour
+
+3. SERVICE PERIOD
+- Contract Start Date: February 1, 2024
+- Contract End Date: January 31, 2025
+- Initial term: 12 months
+- Auto-renewal: 30-day notice required
+
+4. BILLING SCHEDULE
+- Monthly invoices sent on the 1st of each month
+- First invoice: February 1, 2024
+- Payment due: 30 days from invoice date
+- Late fees apply after grace period of 5 days
+
+5. SCOPE OF WORK
+Monthly deliverables include:
+- 20 hours of consulting services
+- 4 social media campaigns
+- 8 blog posts or content pieces
+- Monthly analytics report
+
+6. ADDITIONAL TERMS
+- All work performed remotely
+- Quarterly business reviews included
+- Emergency support: Additional $200/hour
+- Travel expenses billed separately at cost
+
+This agreement shall be governed by the laws of California.
+
+Signed:
+TechCorp Solutions Inc. - John Smith, CEO
+Digital Marketing Experts LLC - Sarah Johnson, Managing Director
+
+Contract Number: DME-2024-001

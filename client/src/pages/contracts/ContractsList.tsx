@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Badge } from '../../components/ui/Badge';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '../../components/ui/Table';
 import { mockRentalAgreements } from '../../data/mockData';
+import { contractsApi } from '../../../api/contracts';
 import type { RentalAgreement, SelectOption } from '../../../types';
 
 const ContractsList: React.FC = () => {
@@ -16,6 +17,9 @@ const ContractsList: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
 
   const statusOptions: SelectOption[] = [
     { value: '', label: 'All Statuses' },
@@ -58,13 +62,37 @@ const ContractsList: React.FC = () => {
     }
   };
 
-  const handleUploadSubmit = () => {
-    if (selectedFile) {
-      // Mock upload logic
-      console.log('Uploading file:', selectedFile.name);
-      alert(`Contract "${selectedFile.name}" uploaded successfully! (Mock implementation)`);
-      setShowUploadDialog(false);
+  const handleUploadSubmit = async () => {
+    if (!selectedFile) return;
+    
+    setIsUploading(true);
+    setUploadError(null);
+    setUploadSuccess(null);
+    
+    try {
+      // Get user ID from auth context or localStorage 
+      // For now using a mock user ID, replace with actual user auth
+      const userId = 'user123'; // TODO: Get from auth context
+      
+      // Use rental-specific query for better extraction
+      const result = await contractsApi.processAndGenerateInvoice(selectedFile, userId);
+      
+      setUploadSuccess(`Contract "${selectedFile.name}" processed successfully! Generated invoice data for rental agreement.`);
+      
+      // Reset form
       setSelectedFile(null);
+      
+      // Close dialog after a short delay to show success message
+      setTimeout(() => {
+        setShowUploadDialog(false);
+        setUploadSuccess(null);
+      }, 3000);
+      
+    } catch (error) {
+      console.error('Contract upload failed:', error);
+      setUploadError(error instanceof Error ? error.message : 'Failed to process contract. Please try again.');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -269,14 +297,26 @@ const ContractsList: React.FC = () => {
             <CardHeader>
               <CardTitle>Upload Rental Agreement</CardTitle>
               <CardDescription>
-                Upload a new rental agreement document (PDF, DOC, DOCX)
+                Upload a new rental agreement document (PDF only)
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {uploadError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                  <p className="text-sm text-red-700">{uploadError}</p>
+                </div>
+              )}
+              
+              {uploadSuccess && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                  <p className="text-sm text-green-700">{uploadSuccess}</p>
+                </div>
+              )}
+              
               <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center">
                 <input
                   type="file"
-                  accept=".pdf,.doc,.docx"
+                  accept=".pdf"
                   onChange={handleFileUpload}
                   className="hidden"
                   id="file-upload"
@@ -290,7 +330,7 @@ const ContractsList: React.FC = () => {
                       {selectedFile ? selectedFile.name : 'Click to select a file or drag and drop'}
                     </p>
                     <p className="text-xs text-slate-400">
-                      PDF, DOC, DOCX up to 10MB
+                      PDF up to 10MB
                     </p>
                   </div>
                 </label>
@@ -303,9 +343,9 @@ const ContractsList: React.FC = () => {
               <Button 
                 variant="primary" 
                 onClick={handleUploadSubmit}
-                disabled={!selectedFile}
+                disabled={!selectedFile || isUploading}
               >
-                Upload Agreement
+                {isUploading ? 'Processing...' : 'Upload Agreement'}
               </Button>
             </CardFooter>
           </Card>

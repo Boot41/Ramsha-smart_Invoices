@@ -17,6 +17,54 @@ export interface LoginCredentials {
   password: string;
 }
 
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface UserLoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface UserLoginResponse {
+  success: boolean;
+  message: string;
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
+export interface UserRegistrationRequest {
+  email: string;
+  password: string;
+  first_name: string;
+  last_name: string;
+  company?: string;
+  phone?: string;
+}
+
+export interface UserRegistrationResponse {
+  success: boolean;
+  message: string;
+  user: User;
+}
+
+export interface UserCreate {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  company?: string;
+  phone?: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  user?: User;
+}
+
 export interface SignupData {
   email: string;
   password: string;
@@ -39,4 +87,44 @@ export interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+}
+
+export interface ChangePasswordRequest {
+  current_password: string;
+  new_password: string;
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  new_password: string;
+}
+
+export interface PasswordResetResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface UpdateProfileRequest {
+  first_name?: string;
+  last_name?: string;
+  company?: string;
+  phone?: string;
+}
+
+export interface UserProfileResponse {
+  success: boolean;
+  user: User;
+}
+
+export interface EmailVerificationRequest {
+  token: string;
+}
+
+export interface VerificationResponse {
+  success: boolean;
+  message: string;
 }

@@ -1,0 +1,188 @@
+{
+  "info": {
+    "name": "Contract Processing API",
+    "description": "Test collection for contract processing endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "test_user_123",
+      "type": "string"
+    },
+    {
+      "key": "contractName",
+      "value": "sample_contract.pdf",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/contracts/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["contracts", "health"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Upload and Process Contract",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "sample_contract.pdf"
+            },
+            {
+              "key": "user_id",
+              "value": "{{userId}}",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/contracts/upload-and-process",
+          "host": ["{{baseUrl}}"],
+          "path": ["contracts", "upload-and-process"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Generate Invoice Data",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"{{userId}}\",\n  \"contract_name\": \"{{contractName}}\",\n  \"query\": \"Extract all invoice data including parties, payment terms, services, and billing schedule\",\n  \"specific_requirements\": [\n    \"payment_amounts\",\n    \"billing_frequency\",\n    \"party_details\",\n    \"service_descriptions\"\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/contracts/generate-invoice-data",
+          "host": ["{{baseUrl}}"],
+          "path": ["contracts", "generate-invoice-data"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Query Contract - Payment Terms",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"{{userId}}\",\n  \"contract_name\": \"{{contractName}}\",\n  \"query\": \"What are the payment terms and when are invoices due?\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/contracts/query",
+          "host": ["{{baseUrl}}"],
+          "path": ["contracts", "query"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Query Contract - Parties",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"{{userId}}\",\n  \"contract_name\": \"{{contractName}}\",\n  \"query\": \"Who are the parties involved in this contract and what are their contact details?\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/contracts/query",
+          "host": ["{{baseUrl}}"],
+          "path": ["contracts", "query"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Query Contract - Services",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"{{userId}}\",\n  \"contract_name\": \"{{contractName}}\",\n  \"query\": \"What services are included in this contract and what are the deliverables?\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/contracts/query",
+          "host": ["{{baseUrl}}"],
+          "path": ["contracts", "query"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Complete Workflow",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "sample_contract.pdf"
+            },
+            {
+              "key": "user_id",
+              "value": "test_user_complete",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/contracts/process-and-generate-invoice",
+          "host": ["{{baseUrl}}"],
+          "path": ["contracts", "process-and-generate-invoice"]
+        }
+      },
+      "response": []
+    }
+  ]
+}

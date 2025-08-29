@@ -1,12 +1,28 @@
-
-import type { User, UserCreate, LoginRequest, TokenResponse } from '../types/auth';
+import type { 
+  User, 
+  UserCreate, 
+  LoginRequest, 
+  TokenResponse, 
+  UserLoginRequest,
+  UserLoginResponse,
+  UserRegistrationRequest,
+  UserRegistrationResponse,
+  ChangePasswordRequest,
+  ForgotPasswordRequest,
+  ResetPasswordRequest,
+  PasswordResetResponse,
+  UpdateProfileRequest,
+  UserProfileResponse,
+  EmailVerificationRequest,
+  VerificationResponse
+} from '../types/auth';
 import { apiClient } from './base';
 import { API_ENDPOINTS, TOKEN_STORAGE_KEY } from './config';
 import { clearAllAuthData } from '../utils/auth';
 
 export class AuthApi {
-  static async login(credentials: LoginRequest): Promise<TokenResponse> {
-    const response = await apiClient.post<TokenResponse>(
+  static async login(credentials: UserLoginRequest): Promise<UserLoginResponse> {
+    const response = await apiClient.post<UserLoginResponse>(
       API_ENDPOINTS.AUTH.LOGIN,
       credentials,
       { requiresAuth: false }
@@ -20,24 +36,79 @@ export class AuthApi {
     return response;
   }
 
-  static async register(userData: UserCreate): Promise<User> {
-    return apiClient.post<User>(
+  static async register(userData: UserRegistrationRequest): Promise<UserRegistrationResponse> {
+    return apiClient.post<UserRegistrationResponse>(
       API_ENDPOINTS.AUTH.REGISTER,
       userData,
       { requiresAuth: false }
     );
   }
 
-  static async logout(): Promise<void> {
-    // Clear all auth-related data
-    clearAllAuthData();
-    
-    // If you have a logout endpoint on the server, call it here
-    // try {
-    //   await apiClient.post('/auth/logout');
-    // } catch (error) {
-    //   // Ignore logout endpoint errors
-    // }
+  static async logout(): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await apiClient.post<{ success: boolean; message: string }>(
+        API_ENDPOINTS.AUTH.LOGOUT,
+        {}, // No data to send for logout
+        { requiresAuth: true }
+      );
+      
+      // Clear all auth-related data
+      clearAllAuthData();
+      
+      return response;
+    } catch (error) {
+      // Even if the server call fails, clear local data
+      clearAllAuthData();
+      throw error;
+    }
+  }
+
+  static async changePassword(data: ChangePasswordRequest): Promise<{ success: boolean; message: string }> {
+    return apiClient.post<{ success: boolean; message: string }>(
+      API_ENDPOINTS.AUTH.CHANGE_PASSWORD,
+      data
+    );
+  }
+
+  static async forgotPassword(data: ForgotPasswordRequest): Promise<PasswordResetResponse> {
+    return apiClient.post<PasswordResetResponse>(
+      API_ENDPOINTS.AUTH.FORGOT_PASSWORD,
+      data,
+      { requiresAuth: false }
+    );
+  }
+
+  static async resetPassword(data: ResetPasswordRequest): Promise<{ success: boolean; message: string }> {
+    return apiClient.post<{ success: boolean; message: string }>(
+      API_ENDPOINTS.AUTH.RESET_PASSWORD,
+      data,
+      { requiresAuth: false }
+    );
+  }
+
+  static async getProfile(): Promise<UserProfileResponse> {
+    return apiClient.get<UserProfileResponse>(API_ENDPOINTS.AUTH.PROFILE);
+  }
+
+  static async updateProfile(data: UpdateProfileRequest): Promise<{ success: boolean; message: string; profile: User }> {
+    return apiClient.put<{ success: boolean; message: string; profile: User }>(
+      API_ENDPOINTS.AUTH.PROFILE,
+      data
+    );
+  }
+
+  static async verifyEmail(data: EmailVerificationRequest): Promise<VerificationResponse> {
+    return apiClient.post<VerificationResponse>(
+      API_ENDPOINTS.AUTH.VERIFY_EMAIL,
+      data,
+      { requiresAuth: false }
+    );
+  }
+
+  static async getCurrentUserInfo(): Promise<{ user: User; authenticated: boolean; permissions: any }> {
+    return apiClient.get<{ user: User; authenticated: boolean; permissions: any }>(
+      API_ENDPOINTS.AUTH.ME
+    );
   }
 
   static getToken(): string | null {
@@ -81,6 +152,13 @@ export const authApi = {
   login: AuthApi.login.bind(AuthApi),
   register: AuthApi.register.bind(AuthApi),
   logout: AuthApi.logout.bind(AuthApi),
+  changePassword: AuthApi.changePassword.bind(AuthApi),
+  forgotPassword: AuthApi.forgotPassword.bind(AuthApi),
+  resetPassword: AuthApi.resetPassword.bind(AuthApi),
+  getProfile: AuthApi.getProfile.bind(AuthApi),
+  updateProfile: AuthApi.updateProfile.bind(AuthApi),
+  verifyEmail: AuthApi.verifyEmail.bind(AuthApi),
+  getCurrentUserInfo: AuthApi.getCurrentUserInfo.bind(AuthApi),
   getToken: AuthApi.getToken.bind(AuthApi),
   isAuthenticated: AuthApi.isAuthenticated.bind(AuthApi),
   getCurrentUser: AuthApi.getCurrentUser.bind(AuthApi),

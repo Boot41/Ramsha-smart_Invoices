@@ -40,6 +40,9 @@ dependencies = [
     "bcrypt>=4.0.0",
     # Additional utilities
     "python-dotenv>=1.0.0",
+    "pypdf>=6.0.0",
+    "pinecone-client==3.2.2",
+    "langchain-community>=0.3.29",
 ]
 
 [project.optional-dependencies]

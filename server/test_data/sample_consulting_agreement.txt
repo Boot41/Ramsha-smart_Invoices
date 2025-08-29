@@ -1,0 +1,88 @@
+CONSULTING SERVICES AGREEMENT
+
+This Consulting Agreement ("Agreement") is effective as of May 1, 2024 between:
+
+CLIENT:
+HealthTech Innovations Corp
+555 Medical Center Drive
+Boston, MA 02101
+Email: contracts@healthtech-innovations.com
+Phone: (617) 555-0199
+Tax ID: 55-1234567
+
+CONSULTANT:
+Strategic Business Advisors Inc.
+200 Consulting Plaza, Suite 400
+Austin, TX 78701
+Email: billing@strategicadvisors.com
+Phone: (512) 555-0288
+Tax ID: 66-7890123
+
+PROJECT DETAILS:
+Digital Transformation Strategy and Implementation
+
+SCOPE OF SERVICES:
+
+1. CONSULTING SERVICES
+Phase 1 - Assessment (Months 1-2):
+- Current state analysis and gap assessment
+- Technology stack evaluation
+- Process optimization recommendations
+- 80 hours at $250/hour = $20,000
+
+Phase 2 - Strategy Development (Months 3-4):
+- Digital transformation roadmap
+- Implementation timeline and milestones
+- Change management strategy
+- 120 hours at $250/hour = $30,000
+
+Phase 3 - Implementation Support (Months 5-8):
+- Project management and oversight
+- Team training and knowledge transfer
+- Quality assurance and testing support
+- 200 hours at $250/hour = $50,000
+
+2. PAYMENT STRUCTURE
+- Total Project Value: $100,000
+- Payment Schedule: Quarterly invoicing
+- Q1 Payment (Phase 1): $20,000 - Due June 1, 2024
+- Q2 Payment (Phase 2): $30,000 - Due September 1, 2024
+- Q3 Payment (Phase 3): $50,000 - Due December 1, 2024
+- Payment Terms: Net 45 days
+- Late payment penalty: 1.5% per month
+
+3. PROJECT TIMELINE
+- Project Start: May 1, 2024
+- Phase 1 Completion: June 30, 2024
+- Phase 2 Completion: August 31, 2024
+- Phase 3 Completion: December 31, 2024
+- Final deliverables due: January 15, 2025
+
+4. DELIVERABLES
+- Comprehensive assessment report
+- Digital transformation strategy document
+- Implementation roadmap and timeline
+- Training materials and documentation
+- Weekly status reports
+- Final project summary and recommendations
+
+5. ADDITIONAL TERMS
+- Travel expenses: Reimbursed at cost (pre-approved)
+- Additional work: $275/hour with written approval
+- Confidentiality agreement included
+- Intellectual property rights retained by consultant
+- Client owns work product and deliverables
+
+INVOICE SCHEDULE:
+- Invoices sent quarterly on project milestones
+- First invoice: May 31, 2024
+- Subsequent invoices: August 31, 2024 and November 30, 2024
+- Payment due 45 days from invoice date
+
+This agreement is governed by Texas law.
+
+Authorized Signatures:
+HealthTech Innovations Corp - Dr. Jennifer Walsh, CEO
+Strategic Business Advisors Inc. - Robert Kim, Managing Partner
+
+Contract ID: SBA-HTI-2024-Q2

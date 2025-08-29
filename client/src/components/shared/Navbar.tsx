@@ -1,13 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Bell, User, Settings, LogOut, ChevronDown, Palette, Mail, Shield, Moon, Sun } from 'lucide-react';
 import { Button } from '../ui';
+import { useAuth } from '../../../hooks/useAuth';
 
 interface NavbarProps {
   toggleSidebar: () => void;
 }
 
 const Navbar: React.FC<NavbarProps> = ({ toggleSidebar }) => {
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const settingsDropdownRef = useRef<HTMLDivElement>(null);
@@ -165,10 +168,17 @@ const Navbar: React.FC<NavbarProps> = ({ toggleSidebar }) => {
                 <User className="w-5 h-5 text-white" />
               </div>
               <div className="hidden sm:block">
-                <p className="text-sm font-medium text-gray-900">John Doe</p>
-                <p className="text-xs text-gray-500">Admin</p>
+                <p className="text-sm font-medium text-gray-900">{user?.username || 'User'}</p>
+                <p className="text-xs text-gray-500">{user?.role || 'Member'}</p>
               </div>
-              <Button variant="ghost" size="sm">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={async () => {
+                  await logout();
+                  navigate('/auth/login');
+                }}
+              >
                 <LogOut className="w-4 h-4" />
               </Button>
             </div>

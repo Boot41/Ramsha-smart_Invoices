@@ -1,34 +1,30 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { useAuth } from '../../../hooks/useAuth';
 import type { LoginCredentials } from '../../../types';
 
 const Login: React.FC = () => {
+  const navigate = useNavigate();
+  const { login, isLoading, error, clearError } = useAuth();
   const [credentials, setCredentials] = useState<LoginCredentials>({
     email: '',
     password: ''
   });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
+    clearError();
 
     try {
-      // Mock login logic
-      console.log('Login attempt:', credentials);
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Simulate success
-      alert('Login successful! (Mock implementation)');
+      await login(credentials);
+      navigate('/dashboard');
     } catch (err) {
-      setError('Invalid email or password');
-    } finally {
-      setLoading(false);
+      // Error is handled by the store
+      console.error('Login failed:', err);
     }
   };
 
@@ -109,10 +105,10 @@ const Login: React.FC = () => {
                 variant="gradient"
                 size="lg"
                 fullWidth
-                loading={loading}
+                loading={isLoading}
                 disabled={!credentials.email || !credentials.password}
               >
-                {loading ? 'Signing in...' : 'Sign In'}
+                {isLoading ? 'Signing in...' : 'Sign In'}
               </Button>
 
               <div className="relative">
