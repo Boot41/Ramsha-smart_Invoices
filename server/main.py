@@ -3,6 +3,8 @@ from fastapi import FastAPI
 from datetime import datetime
 from dotenv import load_dotenv
 
+from db.postgresdb import get_db
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -43,6 +45,7 @@ async def startup():
     project_id = os.getenv("PROJECT_ID")
     credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     storage_bucket = os.getenv("GCP_STORAGE_BUCKET")
+    get_db()
     
     if project_id:
         logger.info(f"✅ PROJECT_ID loaded: {project_id}")

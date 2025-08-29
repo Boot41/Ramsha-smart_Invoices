@@ -43,6 +43,8 @@ dependencies = [
     "pypdf>=6.0.0",
     "pinecone-client==3.2.2",
     "langchain-community>=0.3.29",
+    "asyncpg>=0.30.0",
+    "sqlalchemy>=2.0.43",
 ]
 
 [project.optional-dependencies]

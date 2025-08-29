@@ -10,7 +10,7 @@ from schemas.auth_schemas import (
     UpdateProfileRequest, UserProfileResponse, EmailVerificationRequest,
     VerificationResponse, AuthErrorResponse, AuthStatus
 )
-from services.user_service import get_user_service
+from services.user_service_db import get_user_service
 from middleware.auth import get_current_user
 
 logger = logging.getLogger(__name__)
