@@ -1,10 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, Button, Badge, Table } from '../../components/ui';
 import { mockInvoicesLegacy } from '../../data/mockData';
+import { useInvoiceStore } from '../../../stores/invoiceStore';
+import { createInvoiceFromContractData } from '../../utils/invoiceAdapter';
 import { Plus, Filter, Download, Eye, Edit } from 'lucide-react';
 
 const InvoicesList: React.FC = () => {
-  const [invoices] = useState(mockInvoicesLegacy);
+  const { invoiceGeneration, contractProcessing } = useInvoiceStore();
+
+  const invoices = useMemo(() => {
+    if (invoiceGeneration?.invoice_data) {
+      const realInvoices = createInvoiceFromContractData(
+        invoiceGeneration.invoice_data, 
+        contractProcessing?.contract_name || 'Contract'
+      );
+      return realInvoices;
+    }
+    return mockInvoicesLegacy;
+  }, [invoiceGeneration, contractProcessing]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -83,12 +96,18 @@ const InvoicesList: React.FC = () => {
     }
   ];
 
+  const hasRealData = invoiceGeneration?.invoice_data;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Invoices</h1>
-          <p className="text-gray-600 mt-2">Manage and track all your invoices</p>
+          <p className="text-gray-600 mt-2">
+            {hasRealData 
+              ? `Showing invoice data extracted from ${contractProcessing?.contract_name || 'processed contract'}`
+              : 'Manage and track all your invoices (showing mock data - process a contract to see real data)'}
+          </p>
         </div>
         <div className="flex space-x-3 mt-4 sm:mt-0">
           <Button variant="outline">

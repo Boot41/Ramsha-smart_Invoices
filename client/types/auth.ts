@@ -81,14 +81,6 @@ export interface SignupData {
   lastName: string;
 }
 
-export interface EnterpriseSignupData extends SignupData {
-  companyName: string;
-  businessType: string;
-  employeeCount: string;
-  industry: string;
-  planType: 'basic' | 'pro' | 'enterprise';
-}
-
 export interface AuthState {
   user: User | null;
   isAuthenticated: boolean;

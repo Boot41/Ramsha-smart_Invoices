@@ -1,7 +1,6 @@
 import { apiClient } from './base';
 import { API_ENDPOINTS } from './config';
 
-// Server-side schemas that match the FastAPI backend
 export interface ContractProcessResponse {
   status: string;
   message: string;
@@ -97,7 +96,6 @@ export interface ContractQueryResponse {
 export class ContractsApi {
   /**
    * Upload and process a contract PDF file
-   * This combines upload, text extraction, chunking, embedding generation, and vector storage
    */
   static async uploadAndProcessContract(
     file: File,
@@ -110,9 +108,7 @@ export class ContractsApi {
     return apiClient.post<ContractProcessResponse>(
       API_ENDPOINTS.CONTRACTS.UPLOAD_AND_PROCESS,
       formData,
-      {
-        isMultipart: true,
-      }
+      { isMultipart: true }
     );
   }
 
@@ -160,9 +156,7 @@ export class ContractsApi {
     return apiClient.post(
       API_ENDPOINTS.CONTRACTS.PROCESS_AND_GENERATE_INVOICE,
       formData,
-      {
-        isMultipart: true,
-      }
+      { isMultipart: true }
     );
   }
 
@@ -181,6 +175,7 @@ export class ContractsApi {
   }
 }
 
+// ✅ Export instance methods (like authApi)
 export const contractsApi = {
   uploadAndProcessContract: ContractsApi.uploadAndProcessContract.bind(ContractsApi),
   generateInvoiceData: ContractsApi.generateInvoiceData.bind(ContractsApi),

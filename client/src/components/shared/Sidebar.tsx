@@ -54,28 +54,22 @@ const menuItems: MenuItemType[] = [
     path: '/contracts'
   },
   {
-    id: 'bots',
-    label: 'Bot Management',
-    icon: Bot,
-    path: '/bots'
-  },
-  {
     id: 'marketplace',
     label: 'Marketplace',
     icon: Store,
     path: '/marketplace'
   },
-  {
-    id: 'admin',
-    label: 'Admin',
-    icon: Users,
-    path: '/admin',
-    children: [
-      { id: 'admin-dashboard', label: 'Admin Dashboard', path: '/admin' },
-      { id: 'user-management', label: 'Users', path: '/admin/users' },
-      { id: 'enterprise-signup', label: 'Enterprise Signup', path: '/auth/enterprise-signup' }
-    ]
-  }
+  // {
+  //   id: 'admin',
+  //   label: 'Admin',
+  //   icon: Users,
+  //   path: '/admin',
+  //   children: [
+  //     { id: 'admin-dashboard', label: 'Admin Dashboard', path: '/admin' },
+  //     { id: 'user-management', label: 'Users', path: '/admin/users' },
+  //     { id: 'enterprise-signup', label: 'Enterprise Signup', path: '/auth/enterprise-signup' }
+  //   ]
+  // }
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar }) => {
