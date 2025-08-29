@@ -17,8 +17,8 @@ class ContractProcessor:
     
     def __init__(self):
         self.embedding_service = get_embedding_service()
-        self.chunk_size = 1000
-        self.chunk_overlap = 200
+        self.chunk_size = 100
+        self.chunk_overlap = 20
         logger.info("🚀 Contract Processor initialized")
     
     def extract_text_from_pdf(self, pdf_file: bytes) -> str:
@@ -193,9 +193,11 @@ class ContractProcessor:
             
             # Step 1: Extract text
             text = self.extract_text_from_pdf(pdf_file)
+            print(f"Extracted text length: {len(text)}")
             
             # Step 2: Chunk text
             chunks = self.chunk_text(text)
+            print(f"Number of chunks created: {len(chunks)}")
             
             # Step 3: Generate embeddings
             embeddings = self.generate_embeddings(chunks)
