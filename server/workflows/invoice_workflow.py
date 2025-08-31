@@ -6,6 +6,7 @@ from langgraph.graph import StateGraph, END
 from schemas.workflow_schemas import WorkflowState, ProcessingStatus
 from agents.orchestrator_agent import OrchestratorAgent, route_from_orchestrator
 from services.contract_rag_service import get_contract_rag_service
+from utils.langsmith_config import get_langsmith_config, trace_workflow_step
 
 logger = logging.getLogger(__name__)
 
@@ -73,9 +74,23 @@ class InvoiceWorkflow:
     
     def _contract_processing_node(self, state: WorkflowState) -> WorkflowState:
         """Process contract data and create embeddings"""
-        logger.info("= Processing contract data...")
-        
         try:
+            logger.info("🔄 Processing contract data...")
+            logger.info(f"📊 Current state: attempt={state.get('attempt_count', 'unknown')}, max={state.get('max_attempts', 'unknown')}")
+            
+            # Check if we've already exceeded max attempts BEFORE incrementing
+            if state["attempt_count"] >= state["max_attempts"]:
+                logger.error(f"❌ Max attempts ({state['max_attempts']}) already reached")
+                state["processing_status"] = ProcessingStatus.FAILED.value
+                if "errors" not in state:
+                    state["errors"] = []
+                state["errors"].append({
+                    "agent": "contract_processing",
+                    "error": f"Maximum attempts ({state['max_attempts']}) exceeded",
+                    "timestamp": datetime.now().isoformat()
+                })
+                return state
+            
             # Increment attempt counter
             state["attempt_count"] += 1
             
@@ -84,32 +99,46 @@ class InvoiceWorkflow:
             contract_name = state["contract_name"]
             user_id = state["user_id"]
             
-            # Extract contract context (your existing RAG functionality)
-            context = self.contract_rag_service._retrieve_contract_context(
-                user_id, contract_name, "Extract all contract information"
-            )
+            logger.info(f"📋 Processing contract: {contract_name} for user: {user_id}")
             
-            # Store processed contract data
-            state["contract_data"] = {
-                "context": context,
-                "processed_at": datetime.now().isoformat(),
-                "status": "processed",
-                "confidence": 0.8 if len(context) > 100 else 0.5
-            }
-            
-            state["confidence_level"] = state["contract_data"]["confidence"]
-            state["processing_status"] = ProcessingStatus.SUCCESS.value
-            
-            logger.info(" Contract processing completed successfully")
-            
-        except Exception as e:
-            logger.error(f"L Contract processing failed: {str(e)}")
+            try:
+                # Extract contract context (your existing RAG functionality)
+                context = self.contract_rag_service._retrieve_contract_context(
+                    user_id, contract_name, "Extract all contract information"
+                )
+                
+                # Store processed contract data
+                state["contract_data"] = {
+                    "context": context,
+                    "processed_at": datetime.now().isoformat(),
+                    "status": "processed",
+                    "confidence": 0.8 if len(context) > 100 else 0.5
+                }
+                
+                state["confidence_level"] = state["contract_data"]["confidence"]
+                state["processing_status"] = ProcessingStatus.SUCCESS.value
+                
+                logger.info("✅ Contract processing completed successfully")
+                
+            except Exception as e:
+                logger.error(f"❌ Contract processing failed: {str(e)}")
+                state["processing_status"] = ProcessingStatus.FAILED.value
+                if "errors" not in state:
+                    state["errors"] = []
+                state["errors"].append({
+                    "agent": "contract_processing",
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                })
+                
+        except Exception as fatal_e:
+            logger.error(f"💥 FATAL: Contract processing node crashed: {str(fatal_e)}")
             state["processing_status"] = ProcessingStatus.FAILED.value
             if "errors" not in state:
                 state["errors"] = []
             state["errors"].append({
                 "agent": "contract_processing",
-                "error": str(e),
+                "error": f"FATAL: {str(fatal_e)}",
                 "timestamp": datetime.now().isoformat()
             })
         
@@ -117,7 +146,7 @@ class InvoiceWorkflow:
     
     def _validation_node(self, state: WorkflowState) -> WorkflowState:
         """Validate processed contract data"""
-        logger.info("= Validating contract data...")
+        logger.info("🔍 Validating contract data...")
         
         try:
             contract_data = state.get("contract_data", {})
@@ -148,10 +177,10 @@ class InvoiceWorkflow:
             state["validation_results"] = validation_results
             state["confidence_level"] = validation_results["overall_score"]
             
-            logger.info(f" Validation completed - Score: {validation_results['overall_score']:.2f}")
+            logger.info(f"✅ Validation completed - Score: {validation_results['overall_score']:.2f}")
             
         except Exception as e:
-            logger.error(f"L Validation failed: {str(e)}")
+            logger.error(f"❌ Validation failed: {str(e)}")
             state["validation_results"] = {"status": "failed", "error": str(e)}
             state["processing_status"] = ProcessingStatus.FAILED.value
         
@@ -159,7 +188,7 @@ class InvoiceWorkflow:
     
     def _schedule_extraction_node(self, state: WorkflowState) -> WorkflowState:
         """Extract scheduling information from contract"""
-        logger.info("=� Extracting schedule data...")
+        logger.info("📅 Extracting schedule data...")
         
         try:
             contract_data = state.get("contract_data", {})
@@ -195,17 +224,17 @@ class InvoiceWorkflow:
             state["schedule_data"] = schedule_data
             state["processing_status"] = ProcessingStatus.SUCCESS.value
             
-            logger.info(" Schedule extraction completed")
+            logger.info("✅ Schedule extraction completed")
             
         except Exception as e:
-            logger.error(f"L Schedule extraction failed: {str(e)}")
+            logger.error(f"❌ Schedule extraction failed: {str(e)}")
             state["processing_status"] = ProcessingStatus.FAILED.value
             
         return state
     
     def _invoice_generation_node(self, state: WorkflowState) -> WorkflowState:
         """Generate invoice using existing RAG service"""
-        logger.info("=� Generating invoice data...")
+        logger.info("📄 Generating invoice data...")
         
         try:
             # Use your existing invoice generation service
@@ -225,17 +254,17 @@ class InvoiceWorkflow:
             state["confidence_level"] = invoice_response.confidence_score
             state["processing_status"] = ProcessingStatus.SUCCESS.value
             
-            logger.info(" Invoice generation completed")
+            logger.info("✅ Invoice generation completed")
             
         except Exception as e:
-            logger.error(f"L Invoice generation failed: {str(e)}")
+            logger.error(f"❌ Invoice generation failed: {str(e)}")
             state["processing_status"] = ProcessingStatus.FAILED.value
             
         return state
     
     def _quality_assurance_node(self, state: WorkflowState) -> WorkflowState:
         """Perform quality assurance on generated invoice"""
-        logger.info("= Performing quality assurance...")
+        logger.info("🔍 Performing quality assurance...")
         
         try:
             invoice_data = state.get("invoice_data", {})
@@ -265,17 +294,17 @@ class InvoiceWorkflow:
             state["quality_score"] = quality_score
             state["processing_status"] = ProcessingStatus.SUCCESS.value
             
-            logger.info(f" Quality assurance completed - Score: {quality_score:.2f}")
+            logger.info(f"✅ Quality assurance completed - Score: {quality_score:.2f}")
             
         except Exception as e:
-            logger.error(f"L Quality assurance failed: {str(e)}")
+            logger.error(f"❌ Quality assurance failed: {str(e)}")
             state["processing_status"] = ProcessingStatus.FAILED.value
             
         return state
     
     def _storage_scheduling_node(self, state: WorkflowState) -> WorkflowState:
         """Store invoice and schedule future processing"""
-        logger.info("=� Storing invoice and scheduling...")
+        logger.info("💾 Storing invoice and scheduling...")
         
         try:
             # Store the final invoice
@@ -296,17 +325,17 @@ class InvoiceWorkflow:
             }
             state["processing_status"] = ProcessingStatus.SUCCESS.value
             
-            logger.info(" Storage and scheduling completed")
+            logger.info("✅ Storage and scheduling completed")
             
         except Exception as e:
-            logger.error(f"L Storage failed: {str(e)}")
+            logger.error(f"❌ Storage failed: {str(e)}")
             state["processing_status"] = ProcessingStatus.FAILED.value
             
         return state
     
     def _feedback_learning_node(self, state: WorkflowState) -> WorkflowState:
         """Learn from the workflow execution for future improvements"""
-        logger.info(">� Processing feedback and learning...")
+        logger.info("🧠 Processing feedback and learning...")
         
         try:
             # Analyze what worked and what didn't
@@ -335,17 +364,17 @@ class InvoiceWorkflow:
             state["feedback_result"] = feedback_result
             state["processing_status"] = ProcessingStatus.SUCCESS.value
             
-            logger.info(" Feedback learning completed")
+            logger.info("✅ Feedback learning completed")
             
         except Exception as e:
-            logger.error(f"L Feedback learning failed: {str(e)}")
+            logger.error(f"❌ Feedback learning failed: {str(e)}")
             state["processing_status"] = ProcessingStatus.FAILED.value
             
         return state
     
     def _error_recovery_node(self, state: WorkflowState) -> WorkflowState:
         """Handle errors and attempt recovery"""
-        logger.info("=� Attempting error recovery...")
+        logger.info("🚨 Attempting error recovery...")
         
         try:
             errors = state.get("errors", [])
@@ -368,13 +397,15 @@ class InvoiceWorkflow:
             if state["attempt_count"] < state["max_attempts"]:
                 state["retry_reasons"] = recovery_actions
                 state["processing_status"] = ProcessingStatus.NEEDS_RETRY.value
+                logger.info(f"🔄 Preparing for retry {state['attempt_count'] + 1}/{state['max_attempts']}")
             else:
                 state["processing_status"] = ProcessingStatus.FAILED.value
+                logger.info(f"💀 Max attempts ({state['max_attempts']}) reached, marking as failed")
             
-            logger.info(f"=' Error recovery attempted - Actions: {recovery_actions}")
+            logger.info(f"🔧 Error recovery attempted - Actions: {recovery_actions}")
             
         except Exception as e:
-            logger.error(f"L Error recovery failed: {str(e)}")
+            logger.error(f"❌ Error recovery failed: {str(e)}")
             state["processing_status"] = ProcessingStatus.FAILED.value
             
         return state

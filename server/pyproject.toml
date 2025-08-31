@@ -45,6 +45,7 @@ dependencies = [
     "langchain-community>=0.3.29",
     "asyncpg>=0.30.0",
     "sqlalchemy>=2.0.43",
+    "langgraph>=0.6.6",
 ]
 
 [project.optional-dependencies]

@@ -15,7 +15,7 @@ class OrchestratorAgent(BaseAgent):
     
     def process(self, state: WorkflowState) -> WorkflowState:
         """Main orchestrator logic - routes to appropriate agents"""
-        self.logger.info(f"<� Orchestrator analyzing state for workflow_id: {state.get('workflow_id')}")
+        self.logger.info(f"🎯 Orchestrator analyzing state for workflow_id: {state.get('workflow_id')}")
         
         # Analyze current workflow state
         decision = self._analyze_workflow_state(state)
@@ -25,7 +25,7 @@ class OrchestratorAgent(BaseAgent):
         state["processing_status"] = ProcessingStatus.IN_PROGRESS.value
         
         # Log decision
-        self.logger.info(f"=� Orchestrator decision: {decision['next_action']} (Reason: {decision['reason']})")
+        self.logger.info(f"📋 Orchestrator decision: {decision['next_action']} (Reason: {decision['reason']})")
         
         # Store decision in state for workflow routing
         state["orchestrator_decision"] = decision
@@ -35,7 +35,7 @@ class OrchestratorAgent(BaseAgent):
     def _analyze_workflow_state(self, state: WorkflowState) -> Dict[str, Any]:
         """Analyze current state and decide next action"""
         
-        # Check if max attempts exceeded
+        # Check if max attempts exceeded - CRITICAL GUARD
         if state["attempt_count"] >= state["max_attempts"]:
             return {
                 "next_action": "complete_with_errors",
@@ -51,8 +51,66 @@ class OrchestratorAgent(BaseAgent):
                 "confidence": 0.3
             }
         
-        # Initial state - start processing
-        if not state.get("contract_data") and state["processing_status"] == ProcessingStatus.PENDING.value:
+        # Handle retry status from error recovery - BUT CHECK ATTEMPTS FIRST
+        if state["processing_status"] == ProcessingStatus.NEEDS_RETRY.value:
+            # Double-check attempts before allowing retry
+            if state["attempt_count"] >= state["max_attempts"]:
+                return {
+                    "next_action": "complete_with_errors",
+                    "reason": f"Cannot retry - max attempts ({state['max_attempts']}) already reached",
+                    "confidence": 0.1
+                }
+            # Reset processing status and attempt contract processing again
+            state["processing_status"] = ProcessingStatus.IN_PROGRESS.value
+            return {
+                "next_action": "contract_processing",
+                "reason": f"Retrying after error recovery (attempt {state['attempt_count'] + 1})",
+                "confidence": 0.6
+            }
+        
+        # Handle failed status - end workflow
+        if state["processing_status"] == ProcessingStatus.FAILED.value:
+            return {
+                "next_action": "complete_with_errors",
+                "reason": "Processing failed - ending workflow",
+                "confidence": 0.1
+            }
+        
+        # Quality check results - handle first (we're past initial processing)
+        if state.get("quality_assurance_result"):
+            qa_result = state["quality_assurance_result"]
+            quality_score = qa_result.get("quality_score", 0.0)
+            
+            if quality_score >= 0.9:
+                return {
+                    "next_action": "storage_scheduling",
+                    "reason": f"High quality score ({quality_score}) - approve for storage",
+                    "confidence": 0.9
+                }
+            elif quality_score >= 0.7 and state["attempt_count"] >= 2:
+                return {
+                    "next_action": "storage_scheduling",
+                    "reason": f"Acceptable quality ({quality_score}) after multiple attempts",
+                    "confidence": 0.7
+                }
+            elif state["attempt_count"] < state["max_attempts"]:
+                return {
+                    "next_action": "feedback_learning",
+                    "reason": f"Low quality ({quality_score}) - learn and retry",
+                    "confidence": 0.5
+                }
+            else:
+                return {
+                    "next_action": "error_recovery",
+                    "reason": f"Persistent low quality ({quality_score}) - escalate",
+                    "confidence": 0.3
+                }
+        
+        # Initial state or failed contract processing - start/restart processing
+        if not state.get("contract_data") and state["processing_status"] in [
+            ProcessingStatus.PENDING.value, 
+            ProcessingStatus.IN_PROGRESS.value
+        ]:
             return {
                 "next_action": "contract_processing",
                 "reason": "Starting workflow - contract needs processing",
@@ -109,36 +167,6 @@ class OrchestratorAgent(BaseAgent):
                 "reason": "Invoice generated - quality check required",
                 "confidence": 0.7
             }
-        
-        # Quality check results
-        if state.get("quality_assurance_result"):
-            qa_result = state["quality_assurance_result"]
-            quality_score = qa_result.get("quality_score", 0.0)
-            
-            if quality_score >= 0.9:
-                return {
-                    "next_action": "storage_scheduling",
-                    "reason": f"High quality score ({quality_score}) - approve for storage",
-                    "confidence": 0.9
-                }
-            elif quality_score >= 0.7 and state["attempt_count"] >= 2:
-                return {
-                    "next_action": "storage_scheduling",
-                    "reason": f"Acceptable quality ({quality_score}) after multiple attempts",
-                    "confidence": 0.7
-                }
-            elif state["attempt_count"] < state["max_attempts"]:
-                return {
-                    "next_action": "feedback_learning",
-                    "reason": f"Low quality ({quality_score}) - learn and retry",
-                    "confidence": 0.5
-                }
-            else:
-                return {
-                    "next_action": "error_recovery",
-                    "reason": f"Persistent low quality ({quality_score}) - escalate",
-                    "confidence": 0.3
-                }
         
         # Storage completed - final feedback
         if state.get("storage_result") and state["storage_result"].get("status") == "success":
@@ -200,6 +228,24 @@ def route_from_orchestrator(state: WorkflowState) -> str:
     decision = state.get("orchestrator_decision", {})
     next_action = decision.get("next_action", "error_recovery")
     
+    # CRITICAL FIX: If no decision is found, it means there's a state sync issue
+    # Re-run the orchestrator decision logic directly as a fallback
+    if not decision:
+        logger.warning("🚨 No orchestrator decision found in state - running fallback analysis")
+        from agents.orchestrator_agent import OrchestratorAgent
+        temp_orchestrator = OrchestratorAgent()
+        fallback_decision = temp_orchestrator._analyze_workflow_state(state)
+        next_action = fallback_decision.get("next_action", "error_recovery")
+        logger.info(f"🔧 Fallback routing decision: {next_action}")
+    elif next_action == "error_recovery" and decision.get("reason", "").startswith("Unexpected"):
+        # Only use fallback for truly unexpected default routing, not legitimate error recovery
+        logger.warning("🚨 Default error_recovery routing detected - using fallback analysis")
+        from agents.orchestrator_agent import OrchestratorAgent
+        temp_orchestrator = OrchestratorAgent()
+        fallback_decision = temp_orchestrator._analyze_workflow_state(state)
+        next_action = fallback_decision.get("next_action", "error_recovery")
+        logger.info(f"🔧 Fallback routing decision: {next_action}")
+    
     # Map orchestrator decisions to LangGraph node names
     routing_map = {
         "contract_processing": "contract_processing",
@@ -214,4 +260,7 @@ def route_from_orchestrator(state: WorkflowState) -> str:
         "complete_with_errors": "__end__"
     }
     
-    return routing_map.get(next_action, "error_recovery")
+    routed_node = routing_map.get(next_action, "error_recovery")
+    logger.info(f"🎯 Routing to node: {routed_node}")
+    
+    return routed_node
