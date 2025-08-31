@@ -12,7 +12,7 @@ from .orchestrator import router as orchestrator_router
 
 routes_router = APIRouter()
 
-routes_router.include_router(auth_router)
+# routes_router.include_router(auth_router)
 routes_router.include_router(users_router)
 routes_router.include_router(documents_router)
 routes_router.include_router(invoices_router)
