@@ -1,5 +1,5 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
-from typing import Optional
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, File, UploadFile, Form
+from typing import Optional, Dict, Any
 import logging
 from controller.orchestrator_controller import get_orchestrator_controller
 from schemas.workflow_schemas import WorkflowRequest, WorkflowResponse, WorkflowStatus
@@ -13,29 +13,36 @@ orchestrator_controller = get_orchestrator_controller()
 
 @router.post("/workflow/invoice/start", response_model=WorkflowResponse)
 async def start_invoice_workflow(
-    request: WorkflowRequest,
     background_tasks: BackgroundTasks,
+    user_id: str = Form(...),
+    contract_name: str = Form(...),
+    max_attempts: int = Form(3),
+    options: Optional[str] = Form(default='{}'),
+    contract_file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user)
 ):
     """
     🚀 Start a new agentic invoice processing workflow
     
-    This endpoint initiates the complete agentic workflow:
-    1. Contract Processing - Extract and process contract data
-    2. Validation - Validate contract completeness and accuracy  
-    3. Schedule Extraction - Extract billing schedule information
-    4. Invoice Generation - Generate structured invoice data using RAG
-    5. Quality Assurance - Perform quality checks with feedback loops
-    6. Storage & Scheduling - Store results and schedule future processing
-    7. Feedback Learning - Learn from successes and failures for improvement
-    
-    The workflow includes:
-    - ✅ Automatic retry logic with smart error recovery
-    - ✅ Quality-based feedback loops for continuous improvement
-    - ✅ Multi-agent orchestration with intelligent routing
-    - ✅ Real-time progress tracking and status updates
-    - ✅ Confidence scoring and quality assurance gates
+    This endpoint initiates the complete agentic workflow by accepting form-data
+    including the contract file.
     """
+    import json
+    file_bytes = await contract_file.read()
+    
+    try:
+        options_dict = json.loads(options)
+    except json.JSONDecodeError:
+        options_dict = {}
+
+    request = WorkflowRequest(
+        user_id=user_id,
+        contract_name=contract_name,
+        contract_file=file_bytes,
+        max_attempts=max_attempts,
+        options=options_dict
+    )
+
     logger.info(f"🎯 API: Starting agentic workflow - User: {request.user_id}, Contract: {request.contract_name}")
     
     # Ensure user can only start workflows for themselves (unless admin)

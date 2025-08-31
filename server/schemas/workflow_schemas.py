@@ -25,7 +25,7 @@ class AgentType(str, Enum):
 class WorkflowState(TypedDict):
     """LangGraph state for the agentic workflow"""
     # Core Data
-    contract_file: str
+    contract_file: bytes
     user_id: str
     contract_name: str
     contract_data: Optional[Dict[str, Any]]
@@ -60,7 +60,7 @@ class WorkflowState(TypedDict):
 class WorkflowRequest(BaseModel):
     """Request to start the invoice workflow"""
     user_id: str = Field(..., description="User ID")
-    contract_file: str = Field(..., description="Contract file path or identifier")
+    contract_file: bytes = Field(..., description="Contract file content as bytes")
     contract_name: str = Field(..., description="Name of the contract")
     max_attempts: int = Field(default=3, description="Maximum retry attempts")
     options: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional options")

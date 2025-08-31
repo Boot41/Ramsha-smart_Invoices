@@ -5,6 +5,7 @@ import uuid
 from langgraph.graph import StateGraph, END
 from schemas.workflow_schemas import WorkflowState, ProcessingStatus
 from agents.orchestrator_agent import OrchestratorAgent, route_from_orchestrator
+from agents.contract_processing_agent import ContractProcessingAgent
 from services.contract_rag_service import get_contract_rag_service
 from utils.langsmith_config import get_langsmith_config, trace_workflow_step
 
@@ -16,6 +17,7 @@ class InvoiceWorkflow:
     def __init__(self):
         self.orchestrator = OrchestratorAgent()
         self.contract_rag_service = get_contract_rag_service()
+        self.contract_processing_agent = ContractProcessingAgent()
         self.workflow = self._build_workflow()
         
     def _build_workflow(self) -> StateGraph:
@@ -73,76 +75,10 @@ class InvoiceWorkflow:
         return self.orchestrator.execute(state)
     
     def _contract_processing_node(self, state: WorkflowState) -> WorkflowState:
-        """Process contract data and create embeddings"""
-        try:
-            logger.info("🔄 Processing contract data...")
-            logger.info(f"📊 Current state: attempt={state.get('attempt_count', 'unknown')}, max={state.get('max_attempts', 'unknown')}")
-            
-            # Check if we've already exceeded max attempts BEFORE incrementing
-            if state["attempt_count"] >= state["max_attempts"]:
-                logger.error(f"❌ Max attempts ({state['max_attempts']}) already reached")
-                state["processing_status"] = ProcessingStatus.FAILED.value
-                if "errors" not in state:
-                    state["errors"] = []
-                state["errors"].append({
-                    "agent": "contract_processing",
-                    "error": f"Maximum attempts ({state['max_attempts']}) exceeded",
-                    "timestamp": datetime.now().isoformat()
-                })
-                return state
-            
-            # Increment attempt counter
-            state["attempt_count"] += 1
-            
-            # Use existing contract RAG service to process
-            # This integrates with your existing contract processing logic
-            contract_name = state["contract_name"]
-            user_id = state["user_id"]
-            
-            logger.info(f"📋 Processing contract: {contract_name} for user: {user_id}")
-            
-            try:
-                # Extract contract context (your existing RAG functionality)
-                context = self.contract_rag_service._retrieve_contract_context(
-                    user_id, contract_name, "Extract all contract information"
-                )
-                
-                # Store processed contract data
-                state["contract_data"] = {
-                    "context": context,
-                    "processed_at": datetime.now().isoformat(),
-                    "status": "processed",
-                    "confidence": 0.8 if len(context) > 100 else 0.5
-                }
-                
-                state["confidence_level"] = state["contract_data"]["confidence"]
-                state["processing_status"] = ProcessingStatus.SUCCESS.value
-                
-                logger.info("✅ Contract processing completed successfully")
-                
-            except Exception as e:
-                logger.error(f"❌ Contract processing failed: {str(e)}")
-                state["processing_status"] = ProcessingStatus.FAILED.value
-                if "errors" not in state:
-                    state["errors"] = []
-                state["errors"].append({
-                    "agent": "contract_processing",
-                    "error": str(e),
-                    "timestamp": datetime.now().isoformat()
-                })
-                
-        except Exception as fatal_e:
-            logger.error(f"💥 FATAL: Contract processing node crashed: {str(fatal_e)}")
-            state["processing_status"] = ProcessingStatus.FAILED.value
-            if "errors" not in state:
-                state["errors"] = []
-            state["errors"].append({
-                "agent": "contract_processing",
-                "error": f"FATAL: {str(fatal_e)}",
-                "timestamp": datetime.now().isoformat()
-            })
-        
-        return state
+        """Node that executes the Contract Processing Agent."""
+        # Increment attempt counter before execution
+        state["attempt_count"] += 1
+        return self.contract_processing_agent.execute(state)
     
     def _validation_node(self, state: WorkflowState) -> WorkflowState:
         """Validate processed contract data"""
