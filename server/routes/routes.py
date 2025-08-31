@@ -8,6 +8,7 @@ from .emails import router as emails_router
 from .llm import router as llm_router
 from .contracts import router as contracts_router
 from .embeddings import router as embeddings_router
+from .orchestrator import router as orchestrator_router
 
 routes_router = APIRouter()
 
@@ -20,3 +21,4 @@ routes_router.include_router(emails_router)
 routes_router.include_router(llm_router)
 routes_router.include_router(contracts_router)
 routes_router.include_router(embeddings_router)
+routes_router.include_router(orchestrator_router, prefix="/api/v1/orchestrator", tags=["🤖 Agentic Orchestrator"])

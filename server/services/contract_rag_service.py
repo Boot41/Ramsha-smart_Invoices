@@ -203,19 +203,10 @@ Your task is to analyze the provided rental agreement/lease contract text and ex
 Contract Text:
 {context}"""
             
-            # Use the Vertex AI model directly
-            vertex_model = get_model()
-            
-            # Generate response
-            response = vertex_model.generate_content(system_prompt)
-            
-            # Extract text from response
-            if hasattr(response, 'text'):
-                result = response.text
-            elif hasattr(response, 'candidates') and len(response.candidates) > 0:
-                result = response.candidates[0].content.parts[0].text
-            else:
-                result = str(response)
+            # Generate response using LangChain
+            model = get_model()
+            response = model.invoke(system_prompt)
+            result = response.content
             
             logger.info(f"✅ Extracted invoice data from context")
             return result
@@ -298,17 +289,10 @@ User Question: {query}
 
 Answer:"""
             
-            # Generate response using Vertex AI
-            vertex_model = get_model()
-            response = vertex_model.generate_content(system_prompt)
-            
-            # Extract text from response
-            if hasattr(response, 'text'):
-                result = response.text
-            elif hasattr(response, 'candidates') and len(response.candidates) > 0:
-                result = response.candidates[0].content.parts[0].text
-            else:
-                result = str(response)
+            # Generate response using LangChain
+            model = get_model()
+            response = model.invoke(system_prompt)
+            result = response.content
             
             logger.info("✅ Contract query processed successfully")
             return result
