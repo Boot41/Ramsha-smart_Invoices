@@ -1,66 +1,79 @@
 from pydantic import BaseModel
-from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.chat_history import BaseChatMessageHistory
-from langchain.prompts.chat import ChatPromptTemplate, MessagesPlaceholder
 from fastapi import HTTPException
 from db.db import get_pinecone_client, get_async_database
-from models.llm import get_embedding_model, get_chat_model
-from langchain_core.runnables import RunnablePassthrough, RunnableMap
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.messages import AIMessage, HumanMessage
+from models.llm.embedding import get_embedding_service
+from models.llm.base import get_model
+from typing import Dict, List, Any
 import os
 import json
-store = {}
-def get_session_history(session_id: str) -> BaseChatMessageHistory:
+# Simple in-memory chat history store
+chat_history_store: Dict[str, List[Dict[str, str]]] = {}
+
+def get_session_history(session_id: str) -> List[Dict[str, str]]:
     """ Retrieve or create a chat history for the session. """
-    if session_id not in store:
-        store[session_id] = ChatMessageHistory()
-    return store[session_id]
+    if session_id not in chat_history_store:
+        chat_history_store[session_id] = []
+    return chat_history_store[session_id]
+
+def add_to_chat_history(session_id: str, role: str, message: str):
+    """Add a message to the chat history"""
+    history = get_session_history(session_id)
+    history.append({"role": role, "content": message})
+    
+    # Keep only last 10 messages to avoid context overflow
+    if len(history) > 10:
+        chat_history_store[session_id] = history[-10:]
 def startRAG(retriever, user_id: str, file_name: str, user_prompt: str):
-    """ Configure the RAG chain with retriever and model. """
-    # Initialize the model
+    """ Configure the RAG system using native google-adk implementation. """
+    # Initialize the model and embedding service
     try:
-        model = get_chat_model()
+        model = get_model()
+        embedding_service = get_embedding_service()
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to initialize model: {str(e)}"
+            detail=f"Failed to initialize model or embedding service: {str(e)}"
         )
-    system_prompt = (
-        f"{user_prompt}\n\n"
-        "Use the following pieces of context to answer the question about the query provided by the user. "
-        "Please generate your response by following these steps:\n"
-        "1. You will be provided with relevant text chunks from the documents uploaded by the user. You need to judge the relevance of the text chunks to the user's query.\n"
-        f"2. If the context doesn't provide enough information, just say that you don't know, don't try to make up an answer.\n"
-        "3. Use three sentences maximum and keep the answer as concise as possible.\n"
-        "4. Analyze Each Component: For each part, extract the most relevant information from the PDF file while considering the context of the conversation.\n"
-        f"5. **IMPORTANT: Only use information from documents with the file name: '{file_name}'.**\n"
-        "6. Present Your Final Response: Show only your final response without any additional explanations or details.\n\n"
-        "{context}"
-    )
-    # Create a prompt template
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", system_prompt),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{input}"),
-        ]
-    )
-    def format_chat_history(chat_history):
-        formatted_history = []
-        for message in chat_history:
-            if isinstance(message, HumanMessage):
-                formatted_history.append(HumanMessage(content=message.content))
-            elif isinstance(message, AIMessage):
-                formatted_history.append(AIMessage(content=message.content))
-        return formatted_history
+    
+    def create_system_prompt(context: str, history_str: str = "") -> str:
+        return f"""{user_prompt}
+
+Use the following pieces of context to answer the question about the query provided by the user.
+Please generate your response by following these steps:
+1. You will be provided with relevant text chunks from the documents uploaded by the user. Judge the relevance of the text chunks to the user's query.
+2. If the context doesn't provide enough information, just say that you don't know, don't try to make up an answer.
+3. Use three sentences maximum and keep the answer as concise as possible.
+4. Analyze each component: Extract the most relevant information from the PDF file while considering the context of the conversation.
+5. **IMPORTANT: Only use information from documents with the file name: '{file_name}'.**
+6. Present your final response: Show only your final response without any additional explanations or details.
+
+{history_str}
+
+Context:
+{context}"""
+    
+    def format_chat_history(chat_history: List[Dict[str, str]]) -> str:
+        """Format chat history for inclusion in prompt"""
+        if not chat_history:
+            return ""
+        
+        formatted_lines = []
+        for message in chat_history[-5:]:  # Only include last 5 messages
+            role = message.get("role", "user")
+            content = message.get("content", "")
+            if role == "user":
+                formatted_lines.append(f"Human: {content}")
+            elif role == "assistant":
+                formatted_lines.append(f"Assistant: {content}")
+        
+        if formatted_lines:
+            return "Recent conversation history:\n" + "\n".join(formatted_lines) + "\n"
+        return ""
     def execute_query(user_id, file_name, user_input):
-        chat_history_memory = get_session_history(session_id=user_id)
+        chat_history = get_session_history(session_id=user_id)
         # Convert user input to an embedding
         try:
-            embedding_model = get_embedding_model()
-            query_embedding = embedding_model.embed_query(user_input)
+            query_embedding = embedding_service.embed_query(user_input)
         except Exception as e:
             raise HTTPException(
                 status_code=500,
@@ -88,32 +101,21 @@ def startRAG(retriever, user_id: str, file_name: str, user_prompt: str):
                 context = "No relevant documents found"
         else:
             context = "No documents found"
-        # Define the chain
-        chain = (
-            RunnableMap(
-                {
-                    "context": lambda x: context,  # Pass context directly
-                    "input": lambda x: x["input"],
-                    "chat_history": lambda x: format_chat_history(
-                        x["chat_history_memory"].messages
-                    ),
-                }
-            )
-            | prompt
-            | model
-            | StrOutputParser()
-        )
-        # Invoke the chain
+        # Generate response using google-adk model directly
         try:
-            response = chain.invoke(
-                {
-                    "input": user_input,
-                    "chat_history_memory": chat_history_memory,
-                }
-            )
+            # Format chat history and create prompt
+            history_str = format_chat_history(chat_history)
+            full_prompt = create_system_prompt(context, history_str)
+            full_prompt += f"\n\nUser Question: {user_input}\n\nAnswer:"
+            
+            # Generate response using the model
+            response_obj = model.generate_content(full_prompt)
+            response = response_obj.text
+            
             # Update chat history
-            chat_history_memory.add_user_message(user_input)
-            chat_history_memory.add_ai_message(response)
+            add_to_chat_history(user_id, "user", user_input)
+            add_to_chat_history(user_id, "assistant", response)
+            
             return response
         except Exception as e:
             raise HTTPException(
@@ -121,11 +123,9 @@ def startRAG(retriever, user_id: str, file_name: str, user_prompt: str):
                 detail=f"Failed to generate response: {str(e)}"
             )
     return execute_query
+
 import numpy as np
-from fastapi import HTTPException
 from pinecone import QueryResponse
-from fastapi import HTTPException
-import numpy as np
 def load_vector_store_for_user(user_id: str, query_embedding: np.ndarray):
     """
     Load all vector documents from Pinecone based on user_id only.

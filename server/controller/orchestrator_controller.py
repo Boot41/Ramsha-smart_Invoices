@@ -31,7 +31,7 @@ class OrchestratorController:
             self._validate_workflow_request(request)
             
             # Start the workflow through service layer
-            response = await self.orchestrator_service.start_invoice_workflow(request)
+            response = await self.orchestrator_service.start_invoice_workflow(request, background_tasks)
             
             # Schedule cleanup of old workflows
             background_tasks.add_task(self.orchestrator_service.cleanup_completed_workflows)
@@ -171,8 +171,8 @@ class OrchestratorController:
         if not request.contract_name or not request.contract_name.strip():
             raise ValueError("contract_name is required and cannot be empty")
         
-        if not request.contract_file or not request.contract_file.strip():
-            raise ValueError("contract_file is required and cannot be empty")
+        if not request.contract_file:
+            raise ValueError("contract_file is required")
         
         if request.max_attempts <= 0 or request.max_attempts > 10:
             raise ValueError("max_attempts must be between 1 and 10")

@@ -206,13 +206,7 @@ class ContractProcessor:
             List of embeddings
         """
         try:
-            embeddings = []
-            
-            for chunk in chunks:
-                # Use the embedding service directly
-                embedding = self.embedding_service.embedding_model.embed_query(chunk)
-                embeddings.append(embedding)
-            
+            embeddings = self.embedding_service.embed_documents(chunks)
             logger.info(f"✅ Generated {len(embeddings)} embeddings")
             return embeddings
             

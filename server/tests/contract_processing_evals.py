@@ -332,7 +332,7 @@ class ContractProcessingEvaluator:
                 
                 # If structured data is empty due to validation errors, try to parse raw_response
                 if (not structured_data or 
-                    structured_data.get("notes", "").startswith("Error processing data") or
+                    (structured_data.get("notes") and str(structured_data.get("notes", "")).startswith("Error processing data")) or
                     not structured_data.get("client")):
                     
                     raw_response = invoice_response.get("raw_response", "")
@@ -449,7 +449,7 @@ class ContractProcessingEvaluator:
                     actual_data["service_plan"] = "Enterprise Premium"
                 
                 # Extract VAT information from services and notes
-                notes = structured_data.get("notes", "")
+                notes = structured_data.get("notes", "") or ""
                 for service in services:
                     if isinstance(service, dict):
                         description = str(service.get("description", "")).lower()

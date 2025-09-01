@@ -1,10 +1,12 @@
 from typing import Dict, Any
 import logging
+import asyncio
 from datetime import datetime
 from .base_agent import BaseAgent
 from schemas.workflow_schemas import WorkflowState, AgentType, ProcessingStatus
 from services.contract_processor import get_contract_processor, ContractProcessor
 from services.contract_rag_service import get_contract_rag_service, ContractRAGService
+from services.websocket_manager import get_websocket_manager
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +17,14 @@ class ContractProcessingAgent(BaseAgent):
         super().__init__(AgentType.CONTRACT_PROCESSING)
         self.contract_processor: ContractProcessor = get_contract_processor()
         self.rag_service: ContractRAGService = get_contract_rag_service()
+        self.websocket_manager = get_websocket_manager()
 
-    def process(self, state: WorkflowState) -> WorkflowState:
+    async def process(self, state: WorkflowState) -> WorkflowState:
         """
         Processes the contract by extracting text, storing embeddings, and using RAG.
         """
-        self.logger.info(f"🚀 Starting contract processing for workflow_id: {state.get('workflow_id')}")
+        workflow_id = state.get('workflow_id')
+        self.logger.info(f"🚀 Starting contract processing for workflow_id: {workflow_id}")
         
         user_id = state.get("user_id")
         contract_file = state.get("contract_file")
@@ -32,6 +36,7 @@ class ContractProcessingAgent(BaseAgent):
         # Check if we're in evaluation mode (text content) or normal mode (PDF bytes)
         is_evaluation_mode = isinstance(contract_file, str) and not contract_file.endswith('.pdf')
         
+        await self.websocket_manager.notify_workflow_status(workflow_id, "in_progress", "Step 1: Processing and embedding contract...")
         if is_evaluation_mode:
             # For evaluation: skip PDF processing, use text directly
             self.logger.info("🧪 Evaluation mode detected - processing text content directly")
@@ -54,6 +59,7 @@ class ContractProcessingAgent(BaseAgent):
             self.logger.info(f"✅ Contract processing and embedding complete. Result: {processing_result.get('message')}")
 
         # Step 2: Use the RAG service to extract structured invoice data.
+        await self.websocket_manager.notify_workflow_status(workflow_id, "in_progress", "Step 2: Extracting structured data using RAG service...")
         self.logger.info("Step 2: Extracting structured data using RAG service...")
         try:
             # Add small delay to allow Pinecone indexing to complete
@@ -98,6 +104,7 @@ class ContractProcessingAgent(BaseAgent):
                 raise e
 
         # Step 3: Update the workflow state with the results.
+        await self.websocket_manager.notify_workflow_status(workflow_id, "in_progress", "Step 3: Updating workflow state with results...")
         state["contract_data"] = rag_response.invoice_data.model_dump()
         state["contract_data"]["raw_rag_response"] = rag_response.raw_response
         

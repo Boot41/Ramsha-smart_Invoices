@@ -9,12 +9,14 @@ class ProcessingStatus(str, Enum):
     SUCCESS = "success"
     FAILED = "failed"
     NEEDS_RETRY = "needs_retry"
+    NEEDS_HUMAN_INPUT = "needs_human_input"
     COMPLETED = "completed"
 
 class AgentType(str, Enum):
     ORCHESTRATOR = "orchestrator"
     CONTRACT_PROCESSING = "contract_processing"
     VALIDATION = "validation"
+    CORRECTION = "correction"
     SCHEDULE_EXTRACTION = "schedule_extraction"
     INVOICE_GENERATION = "invoice_generation"
     QUALITY_ASSURANCE = "quality_assurance"

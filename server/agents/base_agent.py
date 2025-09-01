@@ -15,7 +15,7 @@ class BaseAgent(ABC):
         self.max_retries = max_retries
         self.logger = logging.getLogger(f"{__name__}.{agent_type.value}")
     
-    def execute(self, state: WorkflowState) -> WorkflowState:
+    async def execute(self, state: WorkflowState) -> WorkflowState:
         """Execute the agent with error handling and timing"""
         start_time = time.time()
         self.logger.info(f"🚀 Starting {self.agent_type.value} execution")
@@ -26,7 +26,7 @@ class BaseAgent(ABC):
             state["last_updated_at"] = datetime.now().isoformat()
             
             # Execute the agent logic
-            result = self.process(state)
+            result = await self.process(state)
             
             # Calculate execution time
             execution_time = time.time() - start_time
@@ -58,7 +58,7 @@ class BaseAgent(ABC):
             return state
     
     @abstractmethod
-    def process(self, state: WorkflowState) -> WorkflowState:
+    async def process(self, state: WorkflowState) -> WorkflowState:
         """Abstract method to be implemented by each agent"""
         pass
     

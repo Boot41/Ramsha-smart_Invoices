@@ -1,8 +1,10 @@
 from typing import Dict, Any
 import logging
+import asyncio
 from datetime import datetime
 from .base_agent import BaseAgent
 from schemas.workflow_schemas import WorkflowState, AgentType, ProcessingStatus
+from services.websocket_manager import get_websocket_manager
 
 logger = logging.getLogger(__name__)
 
@@ -12,16 +14,20 @@ class OrchestratorAgent(BaseAgent):
     def __init__(self):
         super().__init__(AgentType.ORCHESTRATOR)
         self.decision_rules = self._initialize_decision_rules()
+        self.websocket_manager = get_websocket_manager()
     
-    def process(self, state: WorkflowState) -> WorkflowState:
+    async def process(self, state: WorkflowState) -> WorkflowState:
         """Main orchestrator logic - routes to appropriate agents"""
         self.logger.info(f"🎯 Orchestrator analyzing state for workflow_id: {state.get('workflow_id')}")
         
         # Analyze current workflow state
         decision = self._analyze_workflow_state(state)
         
-        # Update orchestrator metrics
-        state["current_agent"] = "orchestrator"
+        # Get current agent before updating
+        from_agent = state.get("current_agent", "start")
+        
+        # Set the current agent to the next action decided by orchestrator
+        state["current_agent"] = decision["next_action"]
         state["processing_status"] = ProcessingStatus.IN_PROGRESS.value
         
         # Log decision
@@ -29,6 +35,13 @@ class OrchestratorAgent(BaseAgent):
         
         # Store decision in state for workflow routing
         state["orchestrator_decision"] = decision
+        
+        # Broadcast agent transition
+        await self.websocket_manager.notify_agent_transition(
+            state["workflow_id"],
+            from_agent=from_agent,
+            to_agent=decision["next_action"]
+        )
         
         return state
     
@@ -134,14 +147,77 @@ class OrchestratorAgent(BaseAgent):
                 "confidence": 0.9
             }
         
-        # Contract processed - go straight to completion (validation disabled)
-        if state.get("contract_data") and state.get("invoice_data"):
-            # Mark workflow as completed since we have the required data
+        # Contract processed but not validated - proceed to validation
+        if (state.get("contract_data") and state.get("invoice_data") and 
+            not state.get("validation_results")):
+            return {
+                "next_action": "validation",
+                "reason": "Contract processed - proceeding to validation",
+                "confidence": 0.9
+            }
+        
+        # Validation completed successfully - proceed to correction agent
+        if (state.get("validation_results") and 
+            state["validation_results"].get("is_valid") and
+            not state["validation_results"].get("human_input_required") and
+            not state.get("correction_completed")):
+            return {
+                "next_action": "correction", 
+                "reason": "Validation passed - generating final invoice JSON",
+                "confidence": 0.9
+            }
+        
+        # Correction completed - workflow finished
+        if (state.get("correction_completed") and 
+            state.get("final_invoice_json")):
             state["workflow_completed"] = True
             return {
-                "next_action": "complete_success",
-                "reason": "Contract processing completed - returning invoice data",
+                "next_action": "complete_success", 
+                "reason": "Correction completed - final invoice JSON generated",
+                "confidence": 0.95
+            }
+        
+        # Validation requires human input - check if we have WebSocket connections
+        if (state.get("validation_results") and 
+            state["validation_results"].get("human_input_required")):
+            
+            workflow_id = state.get("workflow_id")
+            # If we have active WebSocket connections, the validation agent should handle human input
+            if workflow_id and self.websocket_manager.has_active_connections(workflow_id):
+                # Let the validation agent handle the WebSocket input - don't route anywhere
+                return {
+                    "next_action": "waiting_for_human_input",
+                    "reason": "Validation agent is handling human input via WebSocket",
+                    "confidence": 0.9
+                }
+            else:
+                # No WebSocket connections, complete with errors for HTTP-based input
+                return {
+                    "next_action": "complete_with_errors", 
+                    "reason": "Human input required but no WebSocket connections - pausing for HTTP input",
+                    "confidence": 0.8
+                }
+        
+        # Human input was provided and validation passed - proceed to correction
+        if (state.get("human_input_resolved") and 
+            state["processing_status"] == ProcessingStatus.SUCCESS.value and
+            state.get("validation_results") and
+            state["validation_results"].get("is_valid") and
+            not state.get("correction_completed")):
+            return {
+                "next_action": "correction",
+                "reason": "Human input resolved and validation passed - generating final invoice JSON",
                 "confidence": 0.9
+            }
+        
+        # Human input was provided but need to re-validate
+        if (state.get("human_input_resolved") and 
+            state["processing_status"] == ProcessingStatus.SUCCESS.value and
+            (not state.get("validation_results") or not state["validation_results"].get("is_valid"))):
+            return {
+                "next_action": "validation",
+                "reason": "Human input provided - re-validating data",
+                "confidence": 0.8
             }
         
         # Schedule extracted - generate invoice

@@ -10,6 +10,7 @@ from .contracts import router as contracts_router
 from .embeddings import router as embeddings_router
 from .orchestrator import router as orchestrator_router
 from .eval_endpoint import router as eval_router
+from .human_input import router as human_input_router
 
 routes_router = APIRouter()
 
@@ -24,3 +25,4 @@ routes_router.include_router(contracts_router)
 routes_router.include_router(embeddings_router)
 routes_router.include_router(orchestrator_router, prefix="/api/v1/orchestrator", tags=["🤖 Agentic Orchestrator"])
 routes_router.include_router(eval_router, prefix="/api/v1", tags=["🧪 Evaluation & Testing"])
+routes_router.include_router(human_input_router, tags=["👤 Human-in-the-Loop"])

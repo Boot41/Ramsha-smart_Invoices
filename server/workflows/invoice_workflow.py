@@ -1,12 +1,13 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import logging
 from datetime import datetime
 import uuid
 from schemas.workflow_schemas import WorkflowState, ProcessingStatus
 from agents.orchestrator_agent import OrchestratorAgent
 from agents.contract_processing_agent import ContractProcessingAgent
+from agents.validation_agent import ValidationAgent
+from agents.correction_agent import CorrectionAgent
 from services.contract_rag_service import get_contract_rag_service
-from utils.langsmith_config import get_langsmith_config, trace_workflow_step
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +15,10 @@ logger = logging.getLogger(__name__)
 orchestrator = OrchestratorAgent()
 contract_rag_service = get_contract_rag_service()
 contract_processing_agent = ContractProcessingAgent()
+validation_agent = ValidationAgent()
+correction_agent = CorrectionAgent()
 
-def _orchestrator_node(state: WorkflowState) -> WorkflowState:
+async def _orchestrator_node(state: WorkflowState) -> WorkflowState:
     """Orchestrator node - routes to appropriate agents"""
     state["orchestrator_decision_count"] = state.get("orchestrator_decision_count", 0) + 1
     if state["orchestrator_decision_count"] > 20:
@@ -28,14 +31,22 @@ def _orchestrator_node(state: WorkflowState) -> WorkflowState:
             "timestamp": datetime.now().isoformat()
         })
         return state
-    return orchestrator.execute(state)
+    return await orchestrator.execute(state)
 
-def _contract_processing_node(state: WorkflowState) -> WorkflowState:
+async def _contract_processing_node(state: WorkflowState) -> WorkflowState:
     """Node that executes the Contract Processing Agent."""
     state["attempt_count"] += 1
-    return contract_processing_agent.execute(state)
+    return await contract_processing_agent.execute(state)
 
-def _schedule_extraction_node(state: WorkflowState) -> WorkflowState:
+async def _validation_node(state: WorkflowState) -> WorkflowState:
+    """Node that executes the Validation Agent with WebSocket integration."""
+    return await validation_agent.process(state)
+
+async def _correction_node(state: WorkflowState) -> WorkflowState:
+    """Node that executes the Correction Agent to generate final invoice JSON."""
+    return await correction_agent.process(state)
+
+async def _schedule_extraction_node(state: WorkflowState) -> WorkflowState:
     """Extract scheduling information from contract"""
     logger.info("📅 Extracting schedule data...")
     try:
@@ -55,7 +66,7 @@ def _schedule_extraction_node(state: WorkflowState) -> WorkflowState:
         state["processing_status"] = ProcessingStatus.FAILED.value
     return state
 
-def _invoice_generation_node(state: WorkflowState) -> WorkflowState:
+async def _invoice_generation_node(state: WorkflowState) -> WorkflowState:
     """Generate invoice using existing RAG service"""
     logger.info("📄 Generating invoice data...")
     try:
@@ -75,7 +86,7 @@ def _invoice_generation_node(state: WorkflowState) -> WorkflowState:
         state["processing_status"] = ProcessingStatus.FAILED.value
     return state
 
-def _quality_assurance_node(state: WorkflowState) -> WorkflowState:
+async def _quality_assurance_node(state: WorkflowState) -> WorkflowState:
     """Perform quality assurance on generated invoice"""
     logger.info("🔍 Performing quality assurance...")
     # Placeholder for QA logic
@@ -84,7 +95,7 @@ def _quality_assurance_node(state: WorkflowState) -> WorkflowState:
     logger.info("✅ Quality assurance completed")
     return state
 
-def _storage_scheduling_node(state: WorkflowState) -> WorkflowState:
+async def _storage_scheduling_node(state: WorkflowState) -> WorkflowState:
     """Store invoice and schedule future processing"""
     logger.info("💾 Storing invoice and scheduling...")
     # Placeholder for storage logic
@@ -93,7 +104,7 @@ def _storage_scheduling_node(state: WorkflowState) -> WorkflowState:
     logger.info("✅ Storage and scheduling completed")
     return state
 
-def _feedback_learning_node(state: WorkflowState) -> WorkflowState:
+async def _feedback_learning_node(state: WorkflowState) -> WorkflowState:
     """Learn from the workflow execution for future improvements"""
     logger.info("🧠 Processing feedback and learning...")
     # Placeholder for feedback logic
@@ -102,7 +113,7 @@ def _feedback_learning_node(state: WorkflowState) -> WorkflowState:
     logger.info("✅ Feedback learning completed - workflow marked as complete")
     return state
 
-def _error_recovery_node(state: WorkflowState) -> WorkflowState:
+async def _error_recovery_node(state: WorkflowState) -> WorkflowState:
     """Handle errors and attempt recovery"""
     logger.info("🚨 Attempting error recovery...")
     # Placeholder for error recovery
@@ -110,35 +121,44 @@ def _error_recovery_node(state: WorkflowState) -> WorkflowState:
     logger.info("💀 Error recovery attempted, but marking as failed for now.")
     return state
 
-
-def run_invoice_workflow(state: WorkflowState):
+async def run_invoice_workflow(state: WorkflowState):
     """
     Runs the invoice generation workflow by orchestrating calls to different agents.
     This replaces the LangGraph implementation with a direct Python control flow.
     """
     max_steps = 10  # Safety break to prevent infinite loops
     for i in range(max_steps):
-        state = _orchestrator_node(state)
+        state = await _orchestrator_node(state)
         next_agent = state.get("current_agent")
 
         if next_agent == "contract_processing":
-            state = _contract_processing_node(state)
+            state = await _contract_processing_node(state)
+        elif next_agent == "validation":
+            state = await _validation_node(state)
+        elif next_agent == "correction":
+            state = await _correction_node(state)
         elif next_agent == "schedule_extraction":
-            state = _schedule_extraction_node(state)
+            state = await _schedule_extraction_node(state)
         elif next_agent == "invoice_generation":
-            state = _invoice_generation_node(state)
+            state = await _invoice_generation_node(state)
         elif next_agent == "quality_assurance":
-            state = _quality_assurance_node(state)
+            state = await _quality_assurance_node(state)
         elif next_agent == "storage_scheduling":
-            state = _storage_scheduling_node(state)
+            state = await _storage_scheduling_node(state)
         elif next_agent == "feedback_learning":
-            state = _feedback_learning_node(state)
+            state = await _feedback_learning_node(state)
             break  # End of workflow
         elif next_agent == "error_recovery":
-            state = _error_recovery_node(state)
+            state = await _error_recovery_node(state)
             break # End of workflow
-        elif next_agent == "__end__":
-            logger.info("Workflow finished successfully.")
+        elif next_agent == "waiting_for_human_input":
+            # Don't do anything - validation agent is handling WebSocket input
+            logger.info("⏳ Waiting for human input via WebSocket...")
+            # Sleep briefly to avoid busy loop, then re-evaluate
+            await asyncio.sleep(0.1)
+        elif next_agent in ["complete_success", "complete_with_errors", "__end__"]:
+            logger.info(f"Workflow finished with status: {next_agent}")
+            state["workflow_completed"] = True
             break
         else:
             logger.error(f"Unknown agent: {next_agent}. Terminating workflow.")
@@ -150,7 +170,6 @@ def run_invoice_workflow(state: WorkflowState):
 
     return state
 
-
 def create_invoice_workflow():
     """
     Factory function to create a new invoice workflow instance.
@@ -158,14 +177,13 @@ def create_invoice_workflow():
     """
     return run_invoice_workflow
 
-
-def initialize_workflow_state(user_id: str, contract_file: str, contract_name: str, max_attempts: int = 3) -> WorkflowState:
+def initialize_workflow_state(user_id: str, contract_file: Any, contract_name: str, max_attempts: int = 3, workflow_id: Optional[str] = None) -> WorkflowState:
     """Initialize a new workflow state"""
-    workflow_id = str(uuid.uuid4())
+    w_id = workflow_id if workflow_id else str(uuid.uuid4())
     now = datetime.now().isoformat()
     
     return {
-        "workflow_id": workflow_id,
+        "workflow_id": w_id,
         "user_id": user_id,
         "contract_file": contract_file,
         "contract_name": contract_name,

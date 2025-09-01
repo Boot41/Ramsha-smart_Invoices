@@ -6,6 +6,8 @@ import uuid
 from schemas.workflow_schemas import WorkflowRequest, WorkflowResponse, WorkflowStatus, ProcessingStatus
 from workflows.invoice_workflow import create_invoice_workflow, initialize_workflow_state
 
+from services.websocket_manager import get_websocket_manager
+
 logger = logging.getLogger(__name__)
 
 class OrchestratorService:
@@ -15,8 +17,9 @@ class OrchestratorService:
         self.workflow = create_invoice_workflow()
         self.active_workflows: Dict[str, Dict] = {}
         self.logger = logging.getLogger(__name__)
+        self.websocket_manager = get_websocket_manager()
     
-    async def start_invoice_workflow(self, request: WorkflowRequest) -> WorkflowResponse:
+    async def start_invoice_workflow(self, request: WorkflowRequest, background_tasks) -> WorkflowResponse:
         """
         Start a new agentic invoice processing workflow
         
@@ -27,6 +30,7 @@ class OrchestratorService:
             WorkflowResponse with workflow_id and initial status
         """
         start_time = datetime.now()
+        workflow_id = str(uuid.uuid4())
         
         try:
             self.logger.info(f"🚀 Starting invoice workflow for user: {request.user_id}")
@@ -36,10 +40,9 @@ class OrchestratorService:
                 user_id=request.user_id,
                 contract_file=request.contract_file,
                 contract_name=request.contract_name,
-                max_attempts=request.max_attempts
+                max_attempts=request.max_attempts,
+                workflow_id=workflow_id
             )
-            
-            workflow_id = state["workflow_id"]
             
             # Store in active workflows
             self.active_workflows[workflow_id] = {
@@ -48,26 +51,23 @@ class OrchestratorService:
                 "request": request.model_dump()
             }
             
-            # Execute the workflow asynchronously
-            result = await self._execute_workflow(workflow_id, state)
+            # Execute the workflow in the background
+            background_tasks.add_task(self._execute_workflow, workflow_id, state)
             
-            # Calculate processing time
-            processing_time = (datetime.now() - start_time).total_seconds()
-            
-            # Create response
+            # Return initial response immediately
             response = WorkflowResponse(
                 workflow_id=workflow_id,
-                status=ProcessingStatus(result["processing_status"]),
-                message=self._generate_status_message(result),
-                result=self._extract_workflow_results(result),
-                errors=self._extract_errors(result),
-                quality_score=result.get("quality_score", 0.0),
-                confidence_level=result.get("confidence_level", 0.0),
-                attempt_count=result.get("attempt_count", 0),
-                processing_time_seconds=processing_time
+                status=ProcessingStatus.IN_PROGRESS,
+                message="Workflow started. Connect to WebSocket for real-time updates.",
+                result=None,
+                errors=[],
+                quality_score=0.0,
+                confidence_level=0.0,
+                attempt_count=0,
+                processing_time_seconds=0.0
             )
             
-            self.logger.info(f"✅ Workflow {workflow_id} completed with status: {response.status}")
+            self.logger.info(f"✅ Workflow {workflow_id} started successfully")
             return response
             
         except Exception as e:
@@ -75,43 +75,41 @@ class OrchestratorService:
             
             # Return error response
             return WorkflowResponse(
-                workflow_id=str(uuid.uuid4()),
+                workflow_id=workflow_id,
                 status=ProcessingStatus.FAILED,
                 message=f"Failed to start workflow: {str(e)}",
                 errors=[str(e)],
                 processing_time_seconds=(datetime.now() - start_time).total_seconds()
             )
     
-    async def _execute_workflow(self, workflow_id: str, initial_state: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute the invoice workflow"""
+    async def _execute_workflow(self, workflow_id: str, initial_state: Dict[str, Any]):
+        """Execute the invoice workflow and notify via WebSocket"""
+        final_state = None
         try:
             self.logger.info(f"🔄 Executing workflow {workflow_id}")
-            
-            # Run the workflow in a separate thread to not block the event loop
-            final_state = await asyncio.to_thread(
-                self.workflow,
-                initial_state
-            )
-            
-            # Update stored state
+            await self.websocket_manager.notify_workflow_status(workflow_id, "in_progress", "Workflow execution started.")
+
+            final_state = await self.workflow(initial_state)
+
             self.active_workflows[workflow_id]["state"] = final_state
             self.active_workflows[workflow_id]["completed_at"] = datetime.now()
-            
-            return final_state
-            
+
+            await self.websocket_manager.notify_workflow_completed(workflow_id, final_state)
+            self.logger.info(f"✅ Workflow {workflow_id} completed.")
+
         except Exception as e:
             self.logger.error(f"❌ Workflow execution failed for {workflow_id}: {str(e)}")
-            
-            # Update state with error
-            error_state = initial_state.copy()
-            error_state["processing_status"] = ProcessingStatus.FAILED.value
-            error_state["errors"].append({
-                "agent": "workflow_execution",
-                "error": str(e),
-                "timestamp": datetime.now().isoformat()
-            })
-            
-            return error_state
+            if workflow_id in self.active_workflows:
+                error_state = self.active_workflows[workflow_id]["state"]
+                error_state["processing_status"] = ProcessingStatus.FAILED.value
+                error_state["errors"].append({
+                    "agent": "workflow_execution",
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                })
+                self.active_workflows[workflow_id]["state"] = error_state
+                await self.websocket_manager.notify_workflow_failed(workflow_id, str(e), error_state)
+
     
     async def get_workflow_status(self, workflow_id: str) -> Optional[WorkflowStatus]:
         """Get the current status of a workflow"""
