@@ -52,6 +52,7 @@ class ContractTestCase:
 class ContractProcessingEvaluator:
     """Comprehensive evaluator for contract processing agent"""
     
+    
     def __init__(self):
         self.agent = ContractProcessingAgent()
         self.processor = ContractProcessor()

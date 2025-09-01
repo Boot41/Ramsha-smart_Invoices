@@ -1,10 +1,12 @@
 import os
 import json
+import vertexai
 from fastapi import FastAPI
 from datetime import datetime, date
 from dotenv import load_dotenv
 
 from db.postgresdb import get_db
+from utils.config import get_random_region
 
 # Load environment variables from .env file
 load_dotenv()
@@ -69,6 +71,8 @@ async def startup():
     credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     storage_bucket = os.getenv("GCP_STORAGE_BUCKET")
     get_db()
+
+    vertexai.init(project=project_id, location=get_random_region())
     
     if project_id:
         logger.info(f"✅ PROJECT_ID loaded: {project_id}")

@@ -83,22 +83,14 @@ class OrchestratorService:
             )
     
     async def _execute_workflow(self, workflow_id: str, initial_state: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute the LangGraph workflow"""
+        """Execute the invoice workflow"""
         try:
             self.logger.info(f"🔄 Executing workflow {workflow_id}")
             
-            # Set recursion limit for the workflow execution
-            config = {
-                "recursion_limit": 50,  # Increased from default 25 to allow more workflow steps
-                "thread_id": workflow_id
-            }
-            
-            # Run the LangGraph workflow with configuration
-            # This executes the entire agentic pipeline with feedback loops
+            # Run the workflow in a separate thread to not block the event loop
             final_state = await asyncio.to_thread(
-                self.workflow.workflow.invoke,
-                initial_state,
-                config=config
+                self.workflow,
+                initial_state
             )
             
             # Update stored state

@@ -1,3 +1,5 @@
+import random
+
 MARKDOWN_SEPARATORS = [
     "\n#{1,6} ",
     "```\n",
@@ -26,3 +28,7 @@ REGIONS = ["us-central1",
            "europe-west8",
            "europe-west9"
            ]
+
+def get_random_region():
+    return random.choice(REGIONS)
+

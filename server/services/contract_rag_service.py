@@ -1,16 +1,9 @@
 from pydantic import BaseModel
-from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.chat_history import BaseChatMessageHistory
-from langchain.prompts.chat import ChatPromptTemplate, MessagesPlaceholder
 from fastapi import HTTPException
-from db.db import get_pinecone_client, get_async_database
-from models.llm import get_embedding_model, get_chat_model
-from langchain_core.runnables import RunnablePassthrough, RunnableMap
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.messages import AIMessage, HumanMessage
-from schemas.contract_schemas import ContractInvoiceData, InvoiceGenerationResponse
+from db.db import get_pinecone_client
+from models.llm.embedding import get_embedding_service
 from models.llm.base import get_model
+from schemas.contract_schemas import ContractInvoiceData, InvoiceGenerationResponse
 import os
 import json
 import logging
@@ -20,21 +13,12 @@ import re
 
 logger = logging.getLogger(__name__)
 
-store = {}
-
-def get_session_history(session_id: str) -> BaseChatMessageHistory:
-    """Retrieve or create a chat history for the session."""
-    if session_id not in store:
-        store[session_id] = ChatMessageHistory()
-    return store[session_id]
-
-
 class ContractRAGService:
     """RAG service specifically for contract invoice data generation"""
     
     def __init__(self):
-        self.embedding_service = get_embedding_model()
-        self.chat_model = get_chat_model()
+        self.embedding_service = get_embedding_service()
+        self.chat_model = get_model()
         logger.info("🚀 Contract RAG Service initialized")
     
     def generate_invoice_data(self, user_id: str, contract_name: str, query: str = None) -> InvoiceGenerationResponse:
@@ -86,7 +70,7 @@ class ContractRAGService:
         """Retrieve relevant contract context using vector search"""
         try:
             # Generate query embedding
-            query_embedding = self.embedding_service.embedding_model.embed_query(query)
+            query_embedding = self.embedding_service.embed_query(query)
             
             # Search Pinecone for relevant chunks
             index = get_pinecone_client()
@@ -219,10 +203,9 @@ Your task is to analyze the provided contract text and extract ALL relevant info
 Contract Text:
 {context}"""
             
-            # Generate response using LangChain
             model = get_model()
-            response = model.invoke(system_prompt)
-            result = response.content
+            response = model.generate_content(system_prompt)
+            result = response.text
             
             logger.info(f"✅ Extracted invoice data from context")
             return result
@@ -311,10 +294,9 @@ User Question: {query}
 
 Answer:"""
             
-            # Generate response using LangChain
             model = get_model()
-            response = model.invoke(system_prompt)
-            result = response.content
+            response = model.generate_content(system_prompt)
+            result = response.text
             
             logger.info("✅ Contract query processed successfully")
             return result
