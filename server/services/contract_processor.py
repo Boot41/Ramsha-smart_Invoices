@@ -1,4 +1,4 @@
-from pypdf import PdfReader
+import pdfplumber
 from typing import List, Dict, Any
 from fastapi import HTTPException
 import logging
@@ -23,25 +23,54 @@ class ContractProcessor:
     
     def extract_text_from_pdf(self, pdf_file: bytes) -> str:
         """
-        Extract text from PDF file
+        Extract text from PDF file using pdfplumber for better layout preservation
         
         Args:
             pdf_file: PDF file as bytes
             
         Returns:
-            Extracted text content
+            Extracted text content with improved table and layout handling
         """
         try:
-            pdf_reader = PdfReader(io.BytesIO(pdf_file))
             text = ""
             
-            for page in pdf_reader.pages:
-                text += page.extract_text() + "\n"
+            with pdfplumber.open(io.BytesIO(pdf_file)) as pdf:
+                for page_num, page in enumerate(pdf.pages):
+                    logger.info(f"📄 Processing page {page_num + 1}")
+                    
+                    # Extract regular text with layout preservation
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += f"--- Page {page_num + 1} ---\n"
+                        text += page_text + "\n\n"
+                    
+                    # Extract tables separately to preserve structure
+                    tables = page.extract_tables()
+                    if tables:
+                        text += f"--- Tables from Page {page_num + 1} ---\n"
+                        for table_num, table in enumerate(tables):
+                            text += f"Table {table_num + 1}:\n"
+                            for row in table:
+                                if row and any(cell for cell in row if cell):  # Skip empty rows
+                                    # Clean and join cells, handling None values
+                                    clean_row = [str(cell).strip() if cell else "" for cell in row]
+                                    text += " | ".join(clean_row) + "\n"
+                            text += "\n"
+                    
+                    # Extract text from specific regions (useful for amounts in specific locations)
+                    # This helps capture text that might be in specific coordinate areas
+                    bbox_text = page.within_bbox((0, 0, page.width, page.height)).extract_text()
+                    if bbox_text and bbox_text not in page_text:
+                        text += f"--- Additional text from Page {page_num + 1} ---\n"
+                        text += bbox_text + "\n\n"
             
             if not text.strip():
                 raise ValueError("No text could be extracted from the PDF")
-                
-            logger.info(f"✅ Extracted text from PDF: {len(text)} characters")
+            
+            # Enhanced text cleaning for better LLM processing
+            text = self._clean_extracted_text(text)
+            
+            logger.info(f"✅ Extracted text from PDF: {len(text)} characters using pdfplumber")
             return text.strip()
             
         except Exception as e:
@@ -49,6 +78,86 @@ class ContractProcessor:
             raise HTTPException(
                 status_code=400,
                 detail=f"Failed to extract text from PDF: {str(e)}"
+            )
+    
+    def _clean_extracted_text(self, text: str) -> str:
+        """
+        Clean extracted text for better LLM processing
+        
+        Args:
+            text: Raw extracted text
+            
+        Returns:
+            Cleaned text with better formatting
+        """
+        # Remove excessive whitespace while preserving structure
+        text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)
+        
+        # Fix common OCR/extraction issues with currency symbols
+        text = re.sub(r'[^\w\s\.\,\$\£\€\¥\%\-\:\;\(\)\|\n]', ' ', text)
+        
+        # Normalize currency patterns for better detection
+        text = re.sub(r'\$\s*(\d)', r'$\1', text)  # Fix "$  100" -> "$100"
+        text = re.sub(r'(\d)\s*\$', r'\1$', text)  # Fix "100  $" -> "100$"
+        
+        # Improve number formatting
+        text = re.sub(r'(\d)\s+(\d)', r'\1\2', text)  # Fix split numbers "1 000" -> "1000"
+        
+        # Remove extra spaces
+        text = re.sub(r' +', ' ', text)
+        print(text)
+        
+        return text
+    
+    def process_text_content(self, text_content: str, user_id: str, contract_name: str) -> Dict[str, Any]:
+        """
+        Process text content directly (for evaluation purposes)
+        
+        Args:
+            text_content: Raw contract text
+            user_id: User ID
+            contract_name: Name of the contract
+            
+        Returns:
+            Processing result dictionary
+        """
+        try:
+            logger.info(f"🚀 Starting text content processing for user {user_id}")
+            
+            # Clean the text
+            cleaned_text = self._clean_extracted_text(text_content)
+            
+            # Generate chunks
+            chunks = self.chunk_text(cleaned_text)
+            logger.info(f"📄 Created {len(chunks)} text chunks")
+            
+            # Generate embeddings
+            embeddings = self.generate_embeddings(chunks)
+            logger.info(f"🔢 Generated {len(embeddings)} embeddings")
+            
+            # Store in Pinecone
+            vector_ids = self.store_in_pinecone(user_id, contract_name, chunks, embeddings)
+            storage_result = {
+                "status": "success",
+                "message": f"Stored {len(vector_ids)} vectors in Pinecone",
+                "vector_ids": vector_ids[:5]
+            }
+            logger.info(f"💾 Pinecone storage: {storage_result['message']}")
+            
+            return {
+                "status": "success",
+                "message": f"Text content processed successfully for {contract_name}",
+                "text_length": len(cleaned_text),
+                "chunks_count": len(chunks),
+                "embeddings_count": len(embeddings),
+                "pinecone_storage": storage_result
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Text content processing failed: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Text content processing failed: {str(e)}"
             )
     
     def chunk_text(self, text: str) -> List[str]:

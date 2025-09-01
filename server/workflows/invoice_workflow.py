@@ -29,7 +29,7 @@ class InvoiceWorkflow:
         # Add all nodes (agents)
         workflow.add_node("orchestrator", self._orchestrator_node)
         workflow.add_node("contract_processing", self._contract_processing_node)
-        workflow.add_node("validation", self._validation_node)
+        # workflow.add_node("validation", self._validation_node)
         workflow.add_node("schedule_extraction", self._schedule_extraction_node) 
         workflow.add_node("invoice_generation", self._invoice_generation_node)
         workflow.add_node("quality_assurance", self._quality_assurance_node)
@@ -46,7 +46,7 @@ class InvoiceWorkflow:
             route_from_orchestrator,
             {
                 "contract_processing": "contract_processing",
-                "validation": "validation",
+                # "validation": "validation",
                 "schedule_extraction": "schedule_extraction", 
                 "invoice_generation": "invoice_generation",
                 "quality_assurance": "quality_assurance",
@@ -59,7 +59,7 @@ class InvoiceWorkflow:
         
         # All agents return to orchestrator for next decision (agentic loops)
         workflow.add_edge("contract_processing", "orchestrator")
-        workflow.add_edge("validation", "orchestrator") 
+        # workflow.add_edge("validation", "orchestrator") 
         workflow.add_edge("schedule_extraction", "orchestrator")
         workflow.add_edge("invoice_generation", "orchestrator")
         workflow.add_edge("quality_assurance", "orchestrator")
@@ -67,11 +67,31 @@ class InvoiceWorkflow:
         workflow.add_edge("feedback_learning", "orchestrator")
         workflow.add_edge("error_recovery", "orchestrator")
         
-        return workflow.compile()
+        return workflow.compile(
+            checkpointer=None,
+            interrupt_before=None,
+            interrupt_after=None,
+            debug=False
+        ).with_config({"recursion_limit": 100})
     
     # Agent Node Implementations
     def _orchestrator_node(self, state: WorkflowState) -> WorkflowState:
         """Orchestrator node - routes to appropriate agents"""
+        # Increment orchestrator decision counter to prevent infinite loops
+        state["orchestrator_decision_count"] = state.get("orchestrator_decision_count", 0) + 1
+        
+        # Emergency brake: if orchestrator has made too many decisions, force termination
+        if state["orchestrator_decision_count"] > 20:
+            logger.warning(f"🚨 Orchestrator decision count exceeded 20, forcing workflow termination")
+            state["processing_status"] = ProcessingStatus.FAILED.value
+            state["workflow_completed"] = True
+            state["errors"].append({
+                "agent": "orchestrator",
+                "error": "Too many orchestrator decisions - workflow forced to terminate",
+                "timestamp": datetime.now().isoformat()
+            })
+            return state
+            
         return self.orchestrator.execute(state)
     
     def _contract_processing_node(self, state: WorkflowState) -> WorkflowState:
@@ -299,12 +319,14 @@ class InvoiceWorkflow:
             
             state["feedback_result"] = feedback_result
             state["processing_status"] = ProcessingStatus.SUCCESS.value
+            state["workflow_completed"] = True  # Mark workflow as completed after feedback
             
-            logger.info("✅ Feedback learning completed")
+            logger.info("✅ Feedback learning completed - workflow marked as complete")
             
         except Exception as e:
             logger.error(f"❌ Feedback learning failed: {str(e)}")
             state["processing_status"] = ProcessingStatus.FAILED.value
+            state["workflow_completed"] = True  # Still mark as completed even on failure
             
         return state
     

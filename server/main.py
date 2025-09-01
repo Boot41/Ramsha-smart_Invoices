@@ -1,6 +1,7 @@
 import os
+import json
 from fastapi import FastAPI
-from datetime import datetime
+from datetime import datetime, date
 from dotenv import load_dotenv
 
 from db.postgresdb import get_db
@@ -17,12 +18,34 @@ setup_logging(
 
 import logging
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from routes.routes import routes_router
 
 # Get logger for main module
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+# Custom JSON encoder to handle date/datetime objects
+def custom_json_serializer(obj):
+    """Custom JSON serializer for date/datetime objects"""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, date):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+class CustomJSONResponse(JSONResponse):
+    """Custom JSON response that handles date/datetime serialization"""
+    def render(self, content) -> bytes:
+        return json.dumps(
+            content,
+            ensure_ascii=False,
+            allow_nan=False,
+            indent=None,
+            separators=(",", ":"),
+            default=custom_json_serializer
+        ).encode("utf-8")
+
+app = FastAPI(default_response_class=CustomJSONResponse)
 
 origins = ["*"]
 

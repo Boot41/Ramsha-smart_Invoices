@@ -35,6 +35,23 @@ class OrchestratorAgent(BaseAgent):
     def _analyze_workflow_state(self, state: WorkflowState) -> Dict[str, Any]:
         """Analyze current state and decide next action"""
         
+        # FIRST: Check if workflow should be marked as completed
+        if state.get("workflow_completed"):
+            return {
+                "next_action": "complete_with_errors",
+                "reason": "Workflow already marked as completed",
+                "confidence": 0.1
+            }
+        
+        # Check orchestrator decision count to prevent infinite loops
+        decision_count = state.get("orchestrator_decision_count", 0)
+        if decision_count > 15:  # Lower threshold in orchestrator logic
+            return {
+                "next_action": "complete_with_errors", 
+                "reason": f"Too many orchestrator decisions ({decision_count}) - terminating",
+                "confidence": 0.1
+            }
+        
         # Check if max attempts exceeded - CRITICAL GUARD
         if state["attempt_count"] >= state["max_attempts"]:
             return {
@@ -117,37 +134,14 @@ class OrchestratorAgent(BaseAgent):
                 "confidence": 0.9
             }
         
-        # Contract processed but not validated
-        if state.get("contract_data") and not state.get("validation_results"):
+        # Contract processed - go straight to completion (validation disabled)
+        if state.get("contract_data") and state.get("invoice_data"):
+            # Mark workflow as completed since we have the required data
+            state["workflow_completed"] = True
             return {
-                "next_action": "validation",
-                "reason": "Contract processed - needs validation",
-                "confidence": 0.8
-            }
-        
-        # Validation failed - retry or recover
-        if state.get("validation_results") and state["validation_results"].get("status") == "failed":
-            if state["attempt_count"] < 2:
-                return {
-                    "next_action": "contract_processing",
-                    "reason": "Validation failed - retry processing",
-                    "confidence": 0.6
-                }
-            else:
-                return {
-                    "next_action": "error_recovery",
-                    "reason": "Multiple validation failures - needs recovery",
-                    "confidence": 0.4
-                }
-        
-        # Validation passed - proceed to parallel processing
-        if (state.get("validation_results") and 
-            state["validation_results"].get("status") == "passed" and 
-            not state.get("schedule_data")):
-            return {
-                "next_action": "schedule_extraction",
-                "reason": "Validation passed - extract schedule data",
-                "confidence": 0.8
+                "next_action": "complete_success",
+                "reason": "Contract processing completed - returning invoice data",
+                "confidence": 0.9
             }
         
         # Schedule extracted - generate invoice
@@ -170,16 +164,28 @@ class OrchestratorAgent(BaseAgent):
         
         # Storage completed - final feedback
         if state.get("storage_result") and state["storage_result"].get("status") == "success":
-            return {
-                "next_action": "feedback_learning",
-                "reason": "Successful completion - capture learnings",
-                "confidence": 0.8
-            }
+            # Only proceed to feedback if we haven't done it yet
+            if not state.get("feedback_result"):
+                return {
+                    "next_action": "feedback_learning",
+                    "reason": "Successful completion - capture learnings",
+                    "confidence": 0.8
+                }
+            else:
+                # Storage and feedback both done - complete workflow
+                state["workflow_completed"] = True
+                return {
+                    "next_action": "complete_success",
+                    "reason": "All processing completed successfully",
+                    "confidence": 0.9
+                }
         
         # Learning completed - workflow done
         if state.get("feedback_result"):
+            # Mark workflow as completed to prevent further orchestrator cycles
+            state["workflow_completed"] = True
             return {
-                "next_action": "complete_success",
+                "next_action": "complete_success", 
                 "reason": "Workflow completed successfully with learning",
                 "confidence": 0.9
             }

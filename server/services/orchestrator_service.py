@@ -87,11 +87,18 @@ class OrchestratorService:
         try:
             self.logger.info(f"🔄 Executing workflow {workflow_id}")
             
-            # Run the LangGraph workflow
+            # Set recursion limit for the workflow execution
+            config = {
+                "recursion_limit": 50,  # Increased from default 25 to allow more workflow steps
+                "thread_id": workflow_id
+            }
+            
+            # Run the LangGraph workflow with configuration
             # This executes the entire agentic pipeline with feedback loops
             final_state = await asyncio.to_thread(
                 self.workflow.workflow.invoke,
-                initial_state
+                initial_state,
+                config=config
             )
             
             # Update stored state
@@ -180,11 +187,15 @@ class OrchestratorService:
         """Extract key results from the workflow state"""
         results = {}
         
-        if state.get("final_invoice"):
-            results["final_invoice"] = state["final_invoice"]
-        
+        # Prioritize invoice_data since validation is disabled
         if state.get("invoice_data"):
             results["invoice_data"] = state["invoice_data"]
+        
+        if state.get("contract_data"):
+            results["contract_data"] = state["contract_data"] 
+        
+        if state.get("final_invoice"):
+            results["final_invoice"] = state["final_invoice"]
         
         if state.get("schedule_data"):
             results["schedule_data"] = state["schedule_data"]
