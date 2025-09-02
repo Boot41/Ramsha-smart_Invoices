@@ -51,7 +51,7 @@ class ContractProcessingAgent(BaseAgent):
         else:
             # Normal mode: Process PDF file
             self.logger.info("Step 1: Processing and embedding contract...")
-            processing_result = self.contract_processor.process_contract(
+            processing_result = await self.contract_processor.process_contract(
                 pdf_file=contract_file,
                 user_id=user_id,
                 contract_name=contract_name

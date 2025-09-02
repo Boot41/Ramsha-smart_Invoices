@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle, 
   Circle, 
-  Clock, 
   AlertCircle, 
   User, 
   FileText, 
@@ -16,7 +15,7 @@ import {
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
-import { WorkflowEvent } from '../../services/websocketService';
+import type { WorkflowEvent } from '../../services/websocketService';
 import { workflowAPI } from '../../services/workflowService';
 
 interface WorkflowStatusTrackerProps {
@@ -92,7 +91,6 @@ const WorkflowStatusTracker: React.FC<WorkflowStatusTrackerProps> = ({
   const [confidenceLevel, setConfidenceLevel] = useState<number | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const [finalResults, setFinalResults] = useState<any>(null);
 
   // Update steps based on workflow status and events
   useEffect(() => {

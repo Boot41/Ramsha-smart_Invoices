@@ -306,6 +306,21 @@ class ValidationAgent(BaseAgent):
             
             self.logger.info(f"✅ Set awaiting_human_input_websocket = True for workflow {workflow_id}")
             
+            # Send WebSocket notification to trigger human input form
+            await self.websocket_manager.broadcast_workflow_event(
+                workflow_id, 
+                'human_input_required',
+                {
+                    'message': f'Human input required for {contract_name}',
+                    'instructions': human_input_request.get('instructions', 'Please review and correct the extracted data.'),
+                    'fields': human_input_request.get('fields', []),
+                    'context': human_input_request.get('context', {}),
+                    'validation_errors': [issue.message for issue in validation_result.issues if issue.requires_human_input],
+                    'confidence_scores': {field.field_name: field.confidence_score for field in validation_result.missing_required_fields if hasattr(field, 'confidence_score')}
+                }
+            )
+            self.logger.info(f"📡 Sent human_input_required WebSocket event to {workflow_id}")
+            
             # The WebSocket handler will call submit_human_input when data arrives
             # This will trigger re-processing through the orchestrator
             

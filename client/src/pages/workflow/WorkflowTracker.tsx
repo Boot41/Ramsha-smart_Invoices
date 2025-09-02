@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useInvoiceStore } from '../../../stores/invoiceStore';
+import { workflowAPI } from '../../services/workflowService';
 
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../components/ui/Card';
+import HumanInputForm from '../../components/workflow/HumanInputForm';
 
 const WorkflowTracker: React.FC = () => {
   const { workflowId } = useParams<{ workflowId: string }>();
@@ -12,7 +14,6 @@ const WorkflowTracker: React.FC = () => {
   const [messages, setMessages] = useState<any[]>([]);
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [humanInputRequired, setHumanInputRequired] = useState<any | null>(null);
-  const [humanInput, setHumanInput] = useState<any>({});
 
   useEffect(() => {
     if (workflowId) {
@@ -46,22 +47,45 @@ const WorkflowTracker: React.FC = () => {
     }
   }, [workflowId, setWorkflowId, setUiInvoiceComponent]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setHumanInput((prevInput: any) => ({ ...prevInput, [name]: value }));
+  const handleHumanInputSubmit = async (fieldValues: Record<string, any>, userNotes: string) => {
+    try {
+      // Try WebSocket first (real-time)
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        const message = {
+          type: 'human_input_submission',
+          data: {
+            field_values: fieldValues,
+            user_notes: userNotes
+          }
+        };
+        socket.send(JSON.stringify(message));
+        console.log('✅ Human input submitted via WebSocket');
+      } else {
+        // Fallback to HTTP API if WebSocket is not available
+        console.log('🔄 WebSocket not available, using HTTP API fallback...');
+        await workflowAPI.submitHumanInput(workflowId!, fieldValues, userNotes);
+        console.log('✅ Human input submitted via HTTP API');
+      }
+      
+      setHumanInputRequired(null);
+    } catch (error) {
+      console.error('❌ Failed to submit human input:', error);
+      // You could show a user-friendly error message here
+      alert('Failed to submit input. Please try again.');
+    }
   };
 
-  const handleHumanInputSubmit = () => {
+  const handleHumanInputCancel = () => {
+    setHumanInputRequired(null);
+    // Optionally send a cancellation message to the workflow
     if (socket) {
       const message = {
-        type: 'human_input_submission',
+        type: 'human_input_cancelled',
         data: {
-          field_values: humanInput,
-          user_notes: 'User submitted input'
+          message: 'User cancelled human input'
         }
       };
       socket.send(JSON.stringify(message));
-      setHumanInputRequired(null);
     }
   };
 
@@ -71,28 +95,17 @@ const WorkflowTracker: React.FC = () => {
       <p className="text-slate-600 mt-2">Tracking workflow: {workflowId}</p>
 
       {humanInputRequired && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Human Input Required</CardTitle>
-            <CardDescription>{humanInputRequired.message}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {humanInputRequired.fields.map((field: any) => (
-              <div key={field.name}>
-                <label className="block text-sm font-medium text-gray-700">{field.label}</label>
-                <Input
-                  name={field.name}
-                  type={field.type}
-                  value={humanInput[field.name] || ''}
-                  onChange={handleInputChange}
-                />
-              </div>
-            ))}
-          </CardContent>
-          <CardFooter>
-            <Button onClick={handleHumanInputSubmit}>Submit</Button>
-          </CardFooter>
-        </Card>
+        <HumanInputForm
+          request={{
+            fields: humanInputRequired.fields || [],
+            instructions: humanInputRequired.instructions || humanInputRequired.message || 'Please review and correct the extracted data.',
+            context: humanInputRequired.context || {},
+            validation_errors: humanInputRequired.validation_errors || [],
+            confidence_scores: humanInputRequired.confidence_scores || {}
+          }}
+          onSubmit={handleHumanInputSubmit}
+          onCancel={handleHumanInputCancel}
+        />
       )}
 
       <div className="bg-white shadow-md rounded-lg p-6">

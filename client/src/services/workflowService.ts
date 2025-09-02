@@ -250,6 +250,37 @@ class WorkflowAPIService {
   }
 
   /**
+   * Submit human input for workflow validation
+   */
+  async submitHumanInput(
+    workflowId: string, 
+    fieldValues: Record<string, any>, 
+    userNotes: string = ''
+  ): Promise<any> {
+    try {
+      const response = await fetch(`http://localhost:8000/api/v1/human-input/submit`, {
+        method: 'POST',
+        headers: await this.getAuthHeaders(),
+        body: JSON.stringify({
+          workflow_id: workflowId,
+          field_values: fieldValues,
+          user_notes: userNotes
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to submit human input: ${response.status} ${errorText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('❌ Error submitting human input:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get current user ID (implement based on your auth system)
    */
   getCurrentUserId(): string {

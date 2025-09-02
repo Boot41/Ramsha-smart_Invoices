@@ -3,13 +3,13 @@ import json
 import vertexai
 from fastapi import FastAPI
 from datetime import datetime, date
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 from db.postgresdb import get_db
 from utils.config import get_random_region
 
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(find_dotenv())
 
 # Setup logging before importing other modules
 from utils.logging_config import setup_logging

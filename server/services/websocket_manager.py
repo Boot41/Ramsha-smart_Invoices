@@ -192,7 +192,20 @@ class WorkflowWebSocketManager:
         
     async def _send_to_websocket(self, websocket: WebSocket, message: Dict[str, Any]):
         """Send message to a specific WebSocket"""
-        await websocket.send_text(json.dumps(message, default=str))
+        try:
+            await websocket.send_text(json.dumps(message, default=str))
+        except Exception as e:
+            logger.error(f"Failed to send message to WebSocket: {e}")
+            # Remove the failed websocket from active connections
+            await self._cleanup_websocket(websocket)
+    
+    async def _cleanup_websocket(self, websocket: WebSocket):
+        """Remove a websocket from all active connections"""
+        for workflow_id, connections in self.active_connections.items():
+            if websocket in connections:
+                connections.remove(websocket)
+                logger.info(f"📡 Removed failed WebSocket from workflow {workflow_id}")
+                break
         
     def get_workflow_connections(self, workflow_id: str) -> int:
         """Get number of active connections for a workflow"""

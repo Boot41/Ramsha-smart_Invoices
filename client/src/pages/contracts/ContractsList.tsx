@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -12,6 +12,8 @@ import { useContractStore } from '../../../stores/contractStore';
 import { useAuth } from '../../../hooks/useAuth';
 
 import { useInvoiceStore } from '../../../stores/invoiceStore';
+import WorkflowPopupPro from '../../components/workflow/WorkflowPopupPro';
+import { workflowAPI } from '../../services/workflowService';
 
 // Debug log to verify import works
 console.log('ContractsApi loaded:', !!contractsApi);
@@ -32,6 +34,100 @@ const ContractsList: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+
+  // Workflow popup state
+  const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(null);
+  const [contractName, setContractName] = useState<string>('');
+  const [showWorkflowPopup, setShowWorkflowPopup] = useState(false);
+  const [workflowMessages, setWorkflowMessages] = useState<any[]>([]);
+  const [workflowSocket, setWorkflowSocket] = useState<WebSocket | null>(null);
+  const [workflowStatus, setWorkflowStatus] = useState<any>(null);
+  const [humanInputRequired, setHumanInputRequired] = useState<any | null>(null);
+
+  // Enhanced WebSocket connection for workflow updates
+  useEffect(() => {
+    if (currentWorkflowId) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = process.env.NODE_ENV === 'development' ? 'localhost:8000' : window.location.host;
+      const wsUrl = `${protocol}//${host}/api/v1/orchestrator/ws/workflow/${currentWorkflowId}/realtime`;
+      
+      console.log('🔗 Connecting to WebSocket:', wsUrl);
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log('Workflow WebSocket connected');
+        setWorkflowSocket(ws);
+      };
+
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        setWorkflowMessages(prev => [...prev, { ...message, timestamp: new Date().toISOString() }]);
+
+        // Enhanced message handling for better validation pausing
+        console.log('📨 WebSocket message received:', message.type, message.data);
+        
+        switch (message.type) {
+          case 'human_input_required':
+          case 'human_input_needed':
+            console.log('🚨 Human input required - setting up form...', message.data);
+            setHumanInputRequired(message.data);
+            setIsPaused(true);
+            setWorkflowStatus(prev => ({ ...prev, processing_status: 'needs_human_input' }));
+            break;
+          
+          case 'status_update':
+          case 'agent_transition':
+          case 'agent_started':
+            console.log('🔄 Status update:', message.data);
+            setWorkflowStatus(message.data);
+            break;
+          
+          case 'workflow_complete':
+          case 'workflow_completed':
+            console.log('✅ Workflow completed');
+            setWorkflowStatus({ ...message.data, status: 'completed' });
+            setIsPaused(false);
+            break;
+          
+          case 'workflow_error':
+          case 'error':
+            console.log('❌ Workflow error:', message.data);
+            setWorkflowStatus({ ...message.data, status: 'error' });
+            setIsPaused(false);
+            break;
+          
+          case 'input_processed':
+          case 'human_input_processed':
+            console.log('✅ Human input processed - resuming workflow');
+            setHumanInputRequired(null);
+            setIsPaused(false);
+            break;
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('Workflow WebSocket disconnected');
+        setWorkflowSocket(null);
+      };
+
+      ws.onerror = (error) => {
+        console.error('Workflow WebSocket error:', error);
+      };
+
+      return () => {
+        ws.close();
+      };
+    }
+  }, [currentWorkflowId]);
+
+  // Cleanup WebSocket on component unmount
+  useEffect(() => {
+    return () => {
+      if (workflowSocket) {
+        workflowSocket.close();
+      }
+    };
+  }, [workflowSocket]);
 
   React.useEffect(() => {
     let userId = user?.id;
@@ -97,21 +193,28 @@ const ContractsList: React.FC = () => {
     setUploadSuccess(null);
     
     try {
-      const userId = user?.id || 'user123';
+      const userId = user?.id || localStorage.getItem('userId') || 'user123';
       
       const result = await contractsApi.startInvoiceWorkflow(selectedFile, userId, selectedFile.name);
       
       setWorkflowId(result.workflow_id);
+      setCurrentWorkflowId(result.workflow_id);
+      setContractName(selectedFile.name);
 
       setUploadSuccess(`Workflow for "${selectedFile.name}" started successfully!`);
       
+      // Reset form state
       setSelectedFile(null);
+      setWorkflowMessages([]);
+      setWorkflowStatus(null);
+      setHumanInputRequired(null);
       
+      // Show workflow popup after a brief success message
       setTimeout(() => {
         setShowUploadDialog(false);
         setUploadSuccess(null);
-        navigate(`/workflow/${result.workflow_id}`);
-      }, 2000);
+        setShowWorkflowPopup(true);
+      }, 1000);
       
     } catch (error) {
       console.error('Contract upload failed:', error);
@@ -121,7 +224,91 @@ const ContractsList: React.FC = () => {
     }
   };
 
-  const handleSelectContract = (agreement: RentalAgreement) => {
+  // Enhanced workflow popup handlers
+  const handleHumanInputSubmit = async (fieldValues: Record<string, any>, userNotes: string) => {
+    console.log('📝 Submitting human input:', fieldValues, userNotes);
+    
+    try {
+      // Try WebSocket first (real-time)
+      if (workflowSocket && workflowSocket.readyState === WebSocket.OPEN) {
+        const message = {
+          type: 'human_input_submission',
+          data: {
+            field_values: fieldValues,
+            user_notes: userNotes,
+            workflow_id: currentWorkflowId,
+            action: 'resume_workflow'
+          }
+        };
+        workflowSocket.send(JSON.stringify(message));
+        console.log('✅ Human input submitted via WebSocket', message);
+        
+        // Immediately update UI to show processing resuming
+        setHumanInputRequired(null);
+        setIsPaused(false);
+        setWorkflowStatus(prev => ({ ...prev, processing_status: 'processing' }));
+        
+      } else {
+        // Fallback to HTTP API if WebSocket is not available
+        console.log('🔄 WebSocket not available, using HTTP API fallback...');
+        if (currentWorkflowId) {
+          await workflowAPI.submitHumanInput(currentWorkflowId, fieldValues, userNotes);
+          console.log('✅ Human input submitted via HTTP API');
+          
+          // Update UI state
+          setHumanInputRequired(null);
+          setIsPaused(false);
+          setWorkflowStatus(prev => ({ ...prev, processing_status: 'processing' }));
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ Failed to submit human input:', error);
+      alert('Failed to submit input. Please try again.');
+    }
+  };
+
+  const handleHumanInputCancel = () => {
+    setHumanInputRequired(null);
+    // Optionally send a cancellation message to the workflow
+    if (workflowSocket && workflowSocket.readyState === WebSocket.OPEN) {
+      const message = {
+        type: 'human_input_cancelled',
+        data: {
+          message: 'User cancelled human input'
+        }
+      };
+      workflowSocket.send(JSON.stringify(message));
+    }
+  };
+
+  const handleWorkflowPopupClose = () => {
+    setShowWorkflowPopup(false);
+  };
+
+  const handleDownloadData = async () => {
+    try {
+      if (currentWorkflowId) {
+        const data = await workflowAPI.getWorkflowInvoiceData(currentWorkflowId);
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `invoice-data-${currentWorkflowId}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      console.error('Failed to download invoice data:', error);
+    }
+  };
+
+  const handleViewTemplates = () => {
+    // Navigate to templates page - adjust based on your routing
+    navigate('/invoices/templates');
+  };
+
+  const handleSelectContract = (agreement: any) => {
     // This function is not used in the current workflow
     // but we can keep it for future use.
     console.log('Selected contract:', agreement);
@@ -132,8 +319,8 @@ const ContractsList: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Rental Agreements</h1>
-          <p className="text-slate-600 mt-2">Manage your property rental contracts and agreements</p>
+          <h1 className="text-3xl font-bold text-slate-900">Service Agreements</h1>
+          <p className="text-slate-600 mt-2">Manage your service contracts and agreements</p>
         </div>
         <Button 
           onClick={() => setShowUploadDialog(true)} 
@@ -251,21 +438,20 @@ const ContractsList: React.FC = () => {
       {/* Agreements Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Rental Agreements ({filteredAgreements.length})</CardTitle>
+          <CardTitle>Service Agreements ({filteredAgreements.length})</CardTitle>
           <CardDescription>
-            {isLoading ? 'Loading contracts...' : 'Click on an agreement to generate invoices and manage scheduling'}
+            {isLoading ? 'Loading contracts...' : 'Manage your service agreements and contracts'}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Property</TableHead>
-                <TableHead>Tenant</TableHead>
-                <TableHead>Monthly Rent</TableHead>
-                <TableHead>Lease Period</TableHead>
+                <TableHead>Contract</TableHead>
+                <TableHead>Client</TableHead>
+                <TableHead>Monthly Fee</TableHead>
+                <TableHead>Service Period</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -277,14 +463,14 @@ const ContractsList: React.FC = () => {
                 >
                   <TableCell>
                     <div>
-                      <div className="font-medium text-slate-900">{agreement.propertyTitle || agreement.contract_title}</div>
-                      <div className="text-sm text-slate-500">{agreement.propertyAddress || agreement.address}</div>
+                      <div className="font-medium text-slate-900">{agreement.contract_number || agreement.contract_title || agreement.propertyTitle || 'Contract'}</div>
+                      <div className="text-sm text-slate-500">{agreement.service_type || agreement.propertyAddress || agreement.address || 'Service Agreement'}</div>
                     </div>
                   </TableCell>
                   <TableCell>
                     <div>
-                      <div className="font-medium text-slate-900">{agreement.tenantName || agreement.client?.name}</div>
-                      <div className="text-sm text-slate-500">{agreement.tenantEmail || agreement.client?.email}</div>
+                      <div className="font-medium text-slate-900">{agreement.client_name || agreement.tenantName || agreement.client?.name || 'Client'}</div>
+                      <div className="text-sm text-slate-500">{agreement.client_email || agreement.tenantEmail || agreement.client?.email || 'No email'}</div>
                     </div>
                   </TableCell>
                   <TableCell className="font-semibold text-slate-900">
@@ -300,12 +486,6 @@ const ContractsList: React.FC = () => {
                     <Badge variant={getStatusBadgeVariant(agreement.status)}>
                       {agreement.status ? agreement.status.replace('_', ' ') : 'Unknown'}
                     </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      <Button variant="ghost" size="sm">View</Button>
-                      <Button variant="outline" size="sm">Edit</Button>
-                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -374,6 +554,23 @@ const ContractsList: React.FC = () => {
             </CardFooter>
           </Card>
         </div>
+      )}
+
+      {/* Enhanced Workflow Popup */}
+      {currentWorkflowId && (
+        <WorkflowPopupPro
+          workflowId={currentWorkflowId}
+          contractName={contractName}
+          isOpen={showWorkflowPopup}
+          onClose={handleWorkflowPopupClose}
+          workflowStatus={workflowStatus}
+          events={workflowMessages}
+          humanInputRequest={humanInputRequired}
+          onSubmitHumanInput={handleHumanInputSubmit}
+          onCancelHumanInput={handleHumanInputCancel}
+          onDownloadData={handleDownloadData}
+          onViewTemplates={handleViewTemplates}
+        />
       )}
     </div>
   );

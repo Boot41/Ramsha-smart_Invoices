@@ -52,7 +52,7 @@ class WorkflowWebSocketService {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.hostname;
     const port = process.env.NODE_ENV === 'development' ? '8000' : window.location.port;
-    return `${protocol}//${host}:${port}/api/orchestrator/ws/workflow/${workflowId}/realtime`;
+    return `${protocol}//${host}:${port}/api/v1/orchestrator/ws/workflow/${workflowId}/realtime`;
   }
   
   /**
