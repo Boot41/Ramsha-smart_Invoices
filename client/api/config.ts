@@ -18,6 +18,7 @@ export const API_ENDPOINTS = {
   },
   CONTRACTS: {
     BASE: '/contracts',
+  GET_CONTRACTS:(userId: string) => `/contracts/user/${userId}`,
     UPLOAD_AND_PROCESS: '/contracts/upload-and-process',
     GENERATE_INVOICE_DATA: '/contracts/generate-invoice-data',
     QUERY: '/contracts/query',

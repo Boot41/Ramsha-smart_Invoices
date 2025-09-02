@@ -35,12 +35,30 @@ export const useAuthStore = create<AuthStore>()(
         set({ isLoading: true, error: null });
         try {
           const response = await authApi.login(credentials);
-          
-          // Token is already stored in authApi.login, but let's get user info
-          const currentUser = authApi.getCurrentUser();
-          
+          // Map API user object to local User type
+          let userObj = response.user;
+          if (userObj && userObj.user_id) {
+            userObj = {
+              id: userObj.user_id,
+              email: userObj.email,
+              firstName: userObj.name || '',
+              lastName: '',
+              role: userObj.role,
+              avatar: '',
+              company: '',
+              phone: '',
+              isVerified: userObj.email_verified || false,
+              createdAt: '',
+              updatedAt: '',
+              status: userObj.status,
+              lastLogin: userObj.last_login
+            };
+          }
+          if (userObj?.id) {
+            localStorage.setItem('userId', userObj.id);
+          }
           set({
-            user: response.user || currentUser,
+            user: userObj,
             isAuthenticated: true,
             isLoading: false,
             error: null
@@ -60,12 +78,15 @@ export const useAuthStore = create<AuthStore>()(
         set({ isLoading: true, error: null });
         try {
           const response = await authApi.register(userData);
-          
           // If registration returns a token and user (auto-login), set them
           if (response.access_token && response.user) {
             const currentUser = authApi.getCurrentUser();
+            const userObj = response.user || currentUser;
+            if (userObj?.id) {
+              localStorage.setItem('userId', userObj.id);
+            }
             set({
-              user: response.user || currentUser,
+              user: userObj,
               isAuthenticated: true,
               isLoading: false,
               error: null
@@ -112,6 +133,9 @@ export const useAuthStore = create<AuthStore>()(
               // Optionally fetch fresh user data from server
               try {
                 const userInfo = await authApi.getCurrentUserInfo();
+                if (userInfo.user?.id) {
+                  localStorage.setItem('userId', userInfo.user.id);
+                }
                 set({
                   user: userInfo.user,
                   isAuthenticated: userInfo.authenticated,
@@ -120,6 +144,9 @@ export const useAuthStore = create<AuthStore>()(
                 });
               } catch {
                 // If server call fails, use token data
+                if (currentUser?.id) {
+                  localStorage.setItem('userId', currentUser.id);
+                }
                 set({
                   user: currentUser,
                   isAuthenticated: true,
@@ -157,6 +184,9 @@ export const useAuthStore = create<AuthStore>()(
         set({ isLoading: true, error: null });
         try {
           const response = await authApi.updateProfile(userData);
+          if (response.profile?.id) {
+            localStorage.setItem('userId', response.profile.id);
+          }
           set({
             user: response.profile,
             isLoading: false,

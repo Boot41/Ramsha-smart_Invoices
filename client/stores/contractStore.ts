@@ -64,25 +64,38 @@ export const useContractStore = create<ContractStore>()(
 
       // Actions
       fetchContracts: async (userId: string) => {
-        console.log('contractStore.fetchContracts called with userId:', userId);
-        set({ isLoading: true, error: null });
-        try {
-          console.log('Making API call to listUserContracts...');
-          const response = await contractsApi.listUserContracts(userId);
-          console.log('API response received:', response);
-          set({ 
-            contracts: response.contracts, 
-            isLoading: false,
-            error: null 
-          });
-        } catch (error: any) {
-          console.error('Failed to fetch contracts:', error);
-          set({ 
-            error: error.message || 'Failed to fetch contracts',
-            isLoading: false 
-          });
-          throw error;
-        }
+          console.log('contractStore.fetchContracts called with userId:', userId);
+          set({ isLoading: true, error: null });
+          try {
+            console.log('Making API call to getContracts...');
+            const response = await contractsApi.getContracts(userId);
+            console.log('API response received:', response);
+            // If response is an array, set directly; otherwise, try response.contracts
+            let contractsRaw = Array.isArray(response) ? response : response.contracts || [];
+            // Map and clean contracts
+            const contracts = contractsRaw.map((contract: any) => {
+              const mapped: any = {};
+              // Map only non-empty fields
+              Object.entries(contract).forEach(([key, value]) => {
+                if (value !== null && value !== undefined && value !== '') {
+                  mapped[key] = value;
+                }
+              });
+              return mapped;
+            });
+            set({ 
+              contracts,
+              isLoading: false,
+              error: null 
+            });
+          } catch (error: any) {
+            console.error('Failed to fetch contracts:', error);
+            set({ 
+              error: error.message || 'Failed to fetch contracts',
+              isLoading: false 
+            });
+            throw error;
+          }
       },
 
       uploadAndProcessContract: async (file: File, userId: string) => {

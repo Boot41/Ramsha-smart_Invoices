@@ -3,6 +3,7 @@ from typing import List, Dict, Any
 import logging
 from services.contract_processor import get_contract_processor
 from services.contract_rag_service import get_contract_rag_service
+from services.contract_db_service import get_contract_db_service
 from schemas.contract_schemas import (
     ContractProcessRequest,
     ContractProcessResponse,
@@ -56,7 +57,7 @@ async def upload_and_process_contract(
         
         # Process contract
         contract_processor = get_contract_processor()
-        result = contract_processor.process_contract(
+        result = await contract_processor.process_contract(
             pdf_file=file_content,
             user_id=user_id,
             contract_name=file.filename
@@ -180,7 +181,7 @@ async def process_and_generate_invoice(
         
         # Process contract
         contract_processor = get_contract_processor()
-        processing_result = contract_processor.process_contract(
+        processing_result = await contract_processor.process_contract(
             pdf_file=file_content,
             user_id=user_id,
             contract_name=file.filename
@@ -213,6 +214,81 @@ async def process_and_generate_invoice(
         raise HTTPException(
             status_code=500,
             detail=f"Complete workflow failed: {str(e)}"
+        )
+
+
+@router.get("/user/{user_id}")
+async def get_user_contracts(
+    user_id: str,
+    current_user = Depends(get_current_user)
+):
+    """
+    Get all contracts for a specific user
+    """
+    try:
+        logger.info(f"🔍 Fetching contracts for user: {user_id}")
+        
+        # Get contracts from database
+        contract_db_service = get_contract_db_service()
+        contracts = await contract_db_service.get_contracts_by_user(user_id)
+        
+        # Format contract data for frontend
+        formatted_contracts = []
+        for contract in contracts:
+            formatted_contract = {
+                "id": contract.id,
+                "contract_id": contract.contract_id,
+                "original_filename": contract.original_filename,
+                "storage_path": contract.storage_path,
+                "file_size": contract.file_size,
+                "content_type": contract.content_type,
+                "file_hash": contract.file_hash,
+                "is_processed": contract.is_processed,
+                "processing_completed_at": contract.processing_completed_at.isoformat() if contract.processing_completed_at else None,
+                "total_chunks": contract.total_chunks,
+                "total_embeddings": contract.total_embeddings,
+                "text_preview": contract.text_preview,
+                "created_at": contract.created_at.isoformat(),
+                "updated_at": contract.updated_at.isoformat() if contract.updated_at else None,
+                # Add extracted invoice data if available
+                "extracted_invoice_data": None
+            }
+            
+            # Include extracted invoice data if available
+            if hasattr(contract, 'extracted_invoice_data') and contract.extracted_invoice_data:
+                for extracted_data in contract.extracted_invoice_data:
+                    formatted_contract["extracted_invoice_data"] = {
+                        "id": extracted_data.id,
+                        "invoice_frequency": extracted_data.invoice_frequency.value if extracted_data.invoice_frequency else None,
+                        "first_invoice_date": extracted_data.first_invoice_date.isoformat() if extracted_data.first_invoice_date else None,
+                        "next_invoice_date": extracted_data.next_invoice_date.isoformat() if extracted_data.next_invoice_date else None,
+                        "payment_amount": extracted_data.payment_amount,
+                        "currency": extracted_data.currency,
+                        "payment_due_days": extracted_data.payment_due_days,
+                        "services": extracted_data.services,
+                        "confidence_score": extracted_data.confidence_score
+                    }
+                    break  # Take the first (most recent) extracted data
+            
+            formatted_contracts.append(formatted_contract)
+        
+        result = {
+            "status": "success",
+            "message": f"✅ Found {len(contracts)} contracts for user {user_id}",
+            "user_id": user_id,
+            "contracts": formatted_contracts,
+            "total_count": len(contracts),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        logger.info(f"✅ Returned {len(contracts)} contracts for user {user_id}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to get contracts for user {user_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get contracts: {str(e)}"
         )
 
 

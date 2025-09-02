@@ -1,5 +1,5 @@
 import pdfplumber
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from fastapi import HTTPException
 import logging
 import io
@@ -8,6 +8,9 @@ from db.db import get_pinecone_client
 import uuid
 from datetime import datetime
 import re
+import hashlib
+from services.gcp_storage_service import get_gcp_storage_service
+from services.contract_db_service import get_contract_db_service
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +22,8 @@ class ContractProcessor:
         self.embedding_service = get_embedding_service()
         self.chunk_size = 100
         self.chunk_overlap = 20
+        self.storage_service = get_gcp_storage_service()
+        self.db_service = get_contract_db_service()
         logger.info("🚀 Contract Processor initialized")
     
     def extract_text_from_pdf(self, pdf_file: bytes) -> str:
@@ -276,12 +281,119 @@ class ContractProcessor:
                 detail=f"Failed to store vectors in Pinecone: {str(e)}"
             )
     
-    def process_contract(self, 
-                        pdf_file: bytes, 
-                        user_id: str, 
-                        contract_name: str) -> Dict[str, Any]:
+    def calculate_file_hash(self, file_content: bytes) -> str:
         """
-        Complete contract processing pipeline
+        Calculate SHA-256 hash of file content for duplicate detection
+        
+        Args:
+            file_content: File content as bytes
+            
+        Returns:
+            SHA-256 hash string
+        """
+        return hashlib.sha256(file_content).hexdigest()
+    
+    async def check_duplicate_contract(self, user_id: str, file_hash: str) -> Optional[str]:
+        """
+        Check if a contract with the same hash already exists for the user
+        
+        Args:
+            user_id: User ID
+            file_hash: File hash to check
+            
+        Returns:
+            Contract ID if duplicate exists, None otherwise
+        """
+        try:
+            contracts = await self.db_service.get_contracts_by_user(user_id)
+            for contract in contracts:
+                if hasattr(contract, 'file_hash') and contract.file_hash == file_hash:
+                    logger.info(f"🔍 Duplicate contract found: {contract.id}")
+                    return contract.id
+            return None
+        except Exception as e:
+            logger.error(f"❌ Error checking duplicate contract: {str(e)}")
+            return None
+    
+    def generate_contract_id(self) -> str:
+        """
+        Generate unique contract ID
+        
+        Returns:
+            Unique contract ID string
+        """
+        return str(uuid.uuid4())
+    
+    def generate_storage_path(self, user_id: str, contract_id: str, filename: str) -> str:
+        """
+        Generate structured GCP storage path
+        
+        Args:
+            user_id: User ID
+            contract_id: Contract unique ID
+            filename: Original filename
+            
+        Returns:
+            Storage path in format: contracts/{user_id}/{contract_id}/{filename}
+        """
+        # Clean filename to ensure it's storage-safe
+        safe_filename = re.sub(r'[^\w\-_\.]', '_', filename)
+        return f"contracts/{user_id}/{contract_id}/{safe_filename}"
+    
+    async def store_contract_in_gcp(self, 
+                                   file_content: bytes, 
+                                   storage_path: str, 
+                                   filename: str) -> Dict[str, Any]:
+        """
+        Store contract file in GCP Storage
+        
+        Args:
+            file_content: File content as bytes
+            storage_path: GCP storage path
+            filename: Original filename
+            
+        Returns:
+            Upload result dictionary
+        """
+        try:
+            logger.info(f"📤 Uploading contract to GCP: {storage_path}")
+            
+            # Set metadata
+            metadata = {
+                "original_filename": filename,
+                "upload_timestamp": datetime.now().isoformat(),
+                "file_type": "contract_pdf"
+            }
+            
+            # Upload to GCP
+            result = self.storage_service.upload_file(
+                file_content=file_content,
+                destination_path=storage_path,
+                content_type="application/pdf",
+                metadata=metadata
+            )
+            
+            if result.get("success"):
+                logger.info(f"✅ Contract uploaded to GCP: {storage_path}")
+            else:
+                logger.error(f"❌ Failed to upload contract to GCP: {result.get('message')}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error uploading contract to GCP: {str(e)}")
+            return {
+                "success": False,
+                "message": f"Upload failed: {str(e)}",
+                "error": str(e)
+            }
+    
+    async def process_contract(self, 
+                              pdf_file: bytes, 
+                              user_id: str, 
+                              contract_name: str) -> Dict[str, Any]:
+        """
+        Complete contract processing pipeline with GCP storage and duplicate detection
         
         Args:
             pdf_file: PDF file as bytes
@@ -294,25 +406,80 @@ class ContractProcessor:
         try:
             logger.info(f"🚀 Starting contract processing for user {user_id}")
             
-            # Step 1: Extract text
+            # Step 1: Calculate file hash for duplicate detection
+            file_hash = self.calculate_file_hash(pdf_file)
+            logger.info(f"📋 Calculated file hash: {file_hash[:16]}...")
+            
+            # Step 2: Check for duplicates
+            existing_contract_id = await self.check_duplicate_contract(user_id, file_hash)
+            if existing_contract_id:
+                logger.info(f"🔍 Duplicate contract detected: {existing_contract_id}")
+                return {
+                    "status": "duplicate",
+                    "message": "⚠️ Contract already exists - duplicate not stored",
+                    "contract_name": contract_name,
+                    "user_id": user_id,
+                    "existing_contract_id": existing_contract_id,
+                    "file_hash": file_hash,
+                    "processing_timestamp": datetime.now().isoformat()
+                }
+            
+            # Step 3: Generate unique contract ID and storage path
+            contract_id = self.generate_contract_id()
+            storage_path = self.generate_storage_path(user_id, contract_id, contract_name)
+            logger.info(f"📁 Generated storage path: {storage_path}")
+            
+            # Step 4: Store contract in GCP Storage
+            gcp_result = await self.store_contract_in_gcp(pdf_file, storage_path, contract_name)
+            if not gcp_result.get("success"):
+                raise Exception(f"GCP storage failed: {gcp_result.get('message')}")
+            
+            # Step 5: Save contract metadata to database
+            contract_record = await self.db_service.save_contract(
+                user_id=user_id,
+                original_filename=contract_name,
+                storage_path=storage_path,
+                file_size=len(pdf_file),
+                content_type="application/pdf",
+                file_hash=file_hash,
+                contract_id=contract_id
+            )
+            
+            # Step 6: Extract text
             text = self.extract_text_from_pdf(pdf_file)
-            print(f"Extracted text length: {len(text)}")
+            logger.info(f"📄 Extracted text length: {len(text)}")
             
-            # Step 2: Chunk text
+            # Step 7: Chunk text
             chunks = self.chunk_text(text)
-            print(f"Number of chunks created: {len(chunks)}")
+            logger.info(f"📄 Created {len(chunks)} chunks")
             
-            # Step 3: Generate embeddings
+            # Step 8: Generate embeddings
             embeddings = self.generate_embeddings(chunks)
+            logger.info(f"🔢 Generated {len(embeddings)} embeddings")
             
-            # Step 4: Store in Pinecone
+            # Step 9: Store in Pinecone
             vector_ids = self.store_in_pinecone(user_id, contract_name, chunks, embeddings)
+            
+            # Step 10: Update contract processing status
+            await self.db_service.update_contract_processing_status(
+                storage_path=storage_path,
+                is_processed=True,
+                total_chunks=len(chunks),
+                total_embeddings=len(embeddings),
+                vector_ids=vector_ids,
+                text_preview=text[:500] + "..." if len(text) > 500 else text
+            )
             
             result = {
                 "status": "success",
-                "message": "✅ Contract processed successfully",
+                "message": "✅ Contract processed and stored successfully",
+                "contract_id": contract_id,
                 "contract_name": contract_name,
                 "user_id": user_id,
+                "storage_path": storage_path,
+                "gcp_download_url": gcp_result.get("download_url"),
+                "file_hash": file_hash,
+                "file_size": len(pdf_file),
                 "total_chunks": len(chunks),
                 "total_embeddings": len(embeddings),
                 "vector_ids": vector_ids[:5],  # Return first 5 IDs for reference
@@ -320,7 +487,7 @@ class ContractProcessor:
                 "processing_timestamp": datetime.now().isoformat()
             }
             
-            logger.info(f"✅ Contract processing completed successfully")
+            logger.info(f"✅ Contract processing completed successfully: {contract_id}")
             return result
             
         except Exception as e:

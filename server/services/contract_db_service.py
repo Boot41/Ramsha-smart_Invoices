@@ -7,7 +7,7 @@ from datetime import datetime, date
 from decimal import Decimal
 
 from models.database_models import Contract, ContractParty, ExtractedInvoiceData, GeneratedInvoice, ContractType, InvoiceFrequency
-from db.postgresdb import get_async_db_session
+from db.postgresdb import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,8 @@ class ContractDatabaseService:
         storage_path: str,
         file_size: int,
         content_type: str = "application/pdf",
+        file_hash: Optional[str] = None,
+        contract_id: Optional[str] = None,
         **kwargs
     ) -> Contract:
         """
@@ -37,6 +39,8 @@ class ContractDatabaseService:
             storage_path: GCP Storage path
             file_size: File size in bytes
             content_type: MIME type
+            file_hash: SHA-256 hash of file content for duplicate detection
+            contract_id: Unique contract identifier
             **kwargs: Additional contract metadata
             
         Returns:
@@ -45,21 +49,30 @@ class ContractDatabaseService:
         try:
             logger.info(f"💾 Saving contract to database: {original_filename}")
             
-            async with get_async_db_session() as session:
-                contract = Contract(
-                    user_id=user_id,
-                    original_filename=original_filename,
-                    storage_path=storage_path,
-                    file_size=file_size,
-                    content_type=content_type,
+            async with AsyncSessionLocal() as session:
+                # Create contract record with new fields
+                contract_data = {
+                    "user_id": user_id,
+                    "original_filename": original_filename,
+                    "storage_path": storage_path,
+                    "file_size": file_size,
+                    "content_type": content_type,
                     # Optional processing metadata
-                    total_chunks=kwargs.get('total_chunks'),
-                    total_embeddings=kwargs.get('total_embeddings'),
-                    pinecone_vector_ids=kwargs.get('vector_ids'),
-                    text_preview=kwargs.get('text_preview'),
-                    processing_metadata=kwargs.get('processing_metadata'),
-                    is_processed=kwargs.get('is_processed', False)
-                )
+                    "total_chunks": kwargs.get('total_chunks'),
+                    "total_embeddings": kwargs.get('total_embeddings'),
+                    "pinecone_vector_ids": kwargs.get('vector_ids'),
+                    "text_preview": kwargs.get('text_preview'),
+                    "processing_metadata": kwargs.get('processing_metadata'),
+                    "is_processed": kwargs.get('is_processed', False)
+                }
+                
+                # Add new fields if provided
+                if file_hash:
+                    contract_data["file_hash"] = file_hash
+                if contract_id:
+                    contract_data["contract_id"] = contract_id
+                
+                contract = Contract(**contract_data)
                 
                 session.add(contract)
                 await session.commit()
@@ -96,7 +109,7 @@ class ContractDatabaseService:
             Updated Contract object or None
         """
         try:
-            async with get_async_db_session() as session:
+            async with AsyncSessionLocal() as session:
                 stmt = select(Contract).where(Contract.storage_path == storage_path)
                 result = await session.execute(stmt)
                 contract = result.scalar_one_or_none()
@@ -155,7 +168,7 @@ class ContractDatabaseService:
         try:
             logger.info(f"💾 Saving extracted invoice data for contract: {contract_id}")
             
-            async with get_async_db_session() as session:
+            async with AsyncSessionLocal() as session:
                 # Parse invoice frequency
                 invoice_frequency = None
                 if invoice_data.get('invoice_frequency'):
@@ -249,7 +262,7 @@ class ContractDatabaseService:
             Contract object or None
         """
         try:
-            async with get_async_db_session() as session:
+            async with AsyncSessionLocal() as session:
                 stmt = select(Contract).where(Contract.storage_path == storage_path)
                 result = await session.execute(stmt)
                 return result.scalar_one_or_none()
@@ -269,7 +282,7 @@ class ContractDatabaseService:
             Contract object with invoice data or None
         """
         try:
-            async with get_async_db_session() as session:
+            async with AsyncSessionLocal() as session:
                 stmt = (
                     select(Contract)
                     .options(selectinload(Contract.extracted_invoice_data))
@@ -293,7 +306,7 @@ class ContractDatabaseService:
             List of Contract objects
         """
         try:
-            async with get_async_db_session() as session:
+            async with AsyncSessionLocal() as session:
                 stmt = (
                     select(Contract)
                     .options(selectinload(Contract.extracted_invoice_data))
@@ -318,7 +331,7 @@ class ContractDatabaseService:
             ExtractedInvoiceData object or None
         """
         try:
-            async with get_async_db_session() as session:
+            async with AsyncSessionLocal() as session:
                 stmt = select(ExtractedInvoiceData).where(ExtractedInvoiceData.contract_id == contract_id)
                 result = await session.execute(stmt)
                 return result.scalar_one_or_none()

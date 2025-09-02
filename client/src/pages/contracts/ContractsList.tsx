@@ -6,12 +6,12 @@ import { Select } from '../../components/ui/Select';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '../../components/ui/Table';
-import { mockRentalAgreements } from '../../data/mockData';
-import { contractsApi } from '@client-api/contracts';
-import type { RentalAgreement, SelectOption } from '@types/index';
-import { useAuth } from '@hooks/useAuth';
+import { contractsApi } from '../../../api/contracts';
+import type { SelectOption } from '@types/index';
+import { useContractStore } from '../../../stores/contractStore';
+import { useAuth } from '../../../hooks/useAuth';
 
-import { useInvoiceStore } from '@stores/invoiceStore';
+import { useInvoiceStore } from '../../../stores/invoiceStore';
 
 // Debug log to verify import works
 console.log('ContractsApi loaded:', !!contractsApi);
@@ -19,9 +19,12 @@ console.log('ContractsApi loaded:', !!contractsApi);
 const ContractsList: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-
   const { setWorkflowId } = useInvoiceStore();
-  const [agreements] = useState<RentalAgreement[]>(mockRentalAgreements);
+  const {
+    contracts,
+    fetchContracts,
+    isLoading
+  } = useContractStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showUploadDialog, setShowUploadDialog] = useState(false);
@@ -29,6 +32,21 @@ const ContractsList: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    let userId = user?.id;
+    if (userId) {
+      localStorage.setItem('userId', userId);
+    } else {
+      userId = localStorage.getItem('userId') || '';
+    }
+    if (userId) {
+      console.log('Calling fetchContracts with userId:', userId);
+      fetchContracts(userId);
+    } else {
+      console.error('No userId available for fetchContracts');
+    }
+  }, [user?.id, fetchContracts]);
 
   const statusOptions: SelectOption[] = [
     { value: '', label: 'All Statuses' },
@@ -46,10 +64,10 @@ const ContractsList: React.FC = () => {
     { value: 'townhouse', label: 'Townhouse' }
   ];
 
-  const filteredAgreements = agreements.filter(agreement => {
-    const matchesSearch = agreement.propertyTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         agreement.tenantName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         agreement.propertyAddress.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredAgreements = contracts.filter((agreement: any) => {
+    const matchesSearch = (agreement.propertyTitle?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (agreement.tenantName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (agreement.propertyAddress?.toLowerCase() || '').includes(searchTerm.toLowerCase());
     const matchesStatus = !statusFilter || agreement.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -136,7 +154,7 @@ const ContractsList: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-slate-600">Total Agreements</p>
-                <p className="text-2xl font-bold text-slate-900">{agreements.length}</p>
+                <p className="text-2xl font-bold text-slate-900">{contracts.length}</p>
               </div>
               <div className="p-2 bg-blue-100 rounded-lg">
                 <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -153,7 +171,7 @@ const ContractsList: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-slate-600">Active</p>
                 <p className="text-2xl font-bold text-green-600">
-                  {agreements.filter(a => a.status === 'active').length}
+                  {contracts.filter((a: any) => a.status === 'active').length}
                 </p>
               </div>
               <div className="p-2 bg-green-100 rounded-lg">
@@ -171,7 +189,7 @@ const ContractsList: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-slate-600">Pending</p>
                 <p className="text-2xl font-bold text-amber-600">
-                  {agreements.filter(a => a.status === 'pending_signature').length}
+                  {contracts.filter((a: any) => a.status === 'pending_signature').length}
                 </p>
               </div>
               <div className="p-2 bg-amber-100 rounded-lg">
@@ -189,7 +207,7 @@ const ContractsList: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-slate-600">Monthly Revenue</p>
                 <p className="text-2xl font-bold text-slate-900">
-                  ${agreements.reduce((sum, a) => sum + a.monthlyRent, 0).toLocaleString()}
+                  ${contracts.reduce((sum: number, a: any) => sum + (a.monthlyRent || 0), 0).toLocaleString()}
                 </p>
               </div>
               <div className="p-2 bg-purple-100 rounded-lg">
@@ -235,7 +253,7 @@ const ContractsList: React.FC = () => {
         <CardHeader>
           <CardTitle>Rental Agreements ({filteredAgreements.length})</CardTitle>
           <CardDescription>
-            Click on an agreement to generate invoices and manage scheduling
+            {isLoading ? 'Loading contracts...' : 'Click on an agreement to generate invoices and manage scheduling'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -251,36 +269,36 @@ const ContractsList: React.FC = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredAgreements.map((agreement) => (
+              {filteredAgreements.map((agreement: any) => (
                 <TableRow 
-                  key={agreement.id} 
+                  key={agreement.id || agreement.contract_id} 
                   className="cursor-pointer hover:bg-slate-50"
                   onClick={() => handleSelectContract(agreement)}
                 >
                   <TableCell>
                     <div>
-                      <div className="font-medium text-slate-900">{agreement.propertyTitle}</div>
-                      <div className="text-sm text-slate-500">{agreement.propertyAddress}</div>
+                      <div className="font-medium text-slate-900">{agreement.propertyTitle || agreement.contract_title}</div>
+                      <div className="text-sm text-slate-500">{agreement.propertyAddress || agreement.address}</div>
                     </div>
                   </TableCell>
                   <TableCell>
                     <div>
-                      <div className="font-medium text-slate-900">{agreement.tenantName}</div>
-                      <div className="text-sm text-slate-500">{agreement.tenantEmail}</div>
+                      <div className="font-medium text-slate-900">{agreement.tenantName || agreement.client?.name}</div>
+                      <div className="text-sm text-slate-500">{agreement.tenantEmail || agreement.client?.email}</div>
                     </div>
                   </TableCell>
                   <TableCell className="font-semibold text-slate-900">
-                    ${agreement.monthlyRent.toLocaleString()}/month
+                    ${agreement.monthlyRent ? agreement.monthlyRent.toLocaleString() : (agreement.payment_terms?.amount || 0).toLocaleString()}/month
                   </TableCell>
                   <TableCell>
                     <div className="text-sm">
-                      <div>{new Date(agreement.leaseStartDate).toLocaleDateString()}</div>
-                      <div className="text-slate-500">to {new Date(agreement.leaseEndDate).toLocaleDateString()}</div>
+                      <div>{agreement.leaseStartDate ? new Date(agreement.leaseStartDate).toLocaleDateString() : (agreement.start_date ? new Date(agreement.start_date).toLocaleDateString() : '')}</div>
+                      <div className="text-slate-500">to {agreement.leaseEndDate ? new Date(agreement.leaseEndDate).toLocaleDateString() : (agreement.end_date ? new Date(agreement.end_date).toLocaleDateString() : '')}</div>
                     </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant={getStatusBadgeVariant(agreement.status)}>
-                      {agreement.status.replace('_', ' ')}
+                      {agreement.status ? agreement.status.replace('_', ' ') : 'Unknown'}
                     </Badge>
                   </TableCell>
                   <TableCell>

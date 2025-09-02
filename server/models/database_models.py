@@ -383,3 +383,157 @@ class InvoiceTemplate(Base):
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class InvoiceFrequency(str, enum.Enum):
+    """Invoice frequency enumeration"""
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+    QUARTERLY = "quarterly"
+    ANNUALLY = "annually"
+
+
+class ContractType(str, enum.Enum):
+    """Contract type enumeration"""
+    SERVICE = "service"
+    RENTAL = "rental"
+    CONSULTING = "consulting"
+    SUBSCRIPTION = "subscription"
+    OTHER = "other"
+
+
+class Contract(Base):
+    """Contract model for storing uploaded contract information"""
+    
+    __tablename__ = "contracts"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    contract_id = Column(String, nullable=True, unique=True, index=True)  # Custom contract ID for GCP path
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    
+    # File information
+    original_filename = Column(String(255), nullable=False)
+    storage_path = Column(String(500), nullable=False, unique=True, index=True)
+    file_size = Column(Integer, nullable=False)
+    content_type = Column(String(100), nullable=False, default="application/pdf")
+    file_hash = Column(String(64), nullable=True, index=True)  # SHA-256 hash for duplicate detection
+    
+    # Processing information
+    is_processed = Column(Boolean, default=False)
+    processing_completed_at = Column(DateTime(timezone=True), nullable=True)
+    total_chunks = Column(Integer, nullable=True)
+    total_embeddings = Column(Integer, nullable=True)
+    pinecone_vector_ids = Column(JSON, nullable=True)  # List of vector IDs in Pinecone
+    text_preview = Column(Text, nullable=True)
+    processing_metadata = Column(JSON, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    user = relationship("User", backref="contracts")
+    extracted_invoice_data = relationship("ExtractedInvoiceData", backref="contract", cascade="all, delete-orphan")
+
+
+class ContractParty(Base):
+    """Contract party model for storing party information"""
+    
+    __tablename__ = "contract_parties"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    contract_id = Column(String, ForeignKey("contracts.id"), nullable=False)
+    
+    # Party information
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=True)
+    phone = Column(String(50), nullable=True)
+    address = Column(Text, nullable=True)
+    tax_id = Column(String(100), nullable=True)
+    role = Column(String(100), nullable=False)  # client, service_provider, tenant, landlord
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    contract = relationship("Contract", backref="parties")
+
+
+class ExtractedInvoiceData(Base):
+    """Model for storing extracted invoice data from contracts"""
+    
+    __tablename__ = "extracted_invoice_data"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    contract_id = Column(String, ForeignKey("contracts.id"), nullable=False)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    
+    # Invoice scheduling
+    invoice_frequency = Column(SQLEnum(InvoiceFrequency), nullable=True)
+    first_invoice_date = Column(DateTime(timezone=True), nullable=True)
+    next_invoice_date = Column(DateTime(timezone=True), nullable=True)
+    
+    # Payment terms
+    payment_amount = Column(Float, nullable=True)
+    currency = Column(String(10), nullable=False, default="USD")
+    payment_due_days = Column(Integer, nullable=False, default=30)
+    late_fee = Column(Float, nullable=True)
+    discount_terms = Column(String(500), nullable=True)
+    
+    # Services and terms
+    services = Column(JSON, nullable=True)  # List of service items
+    special_terms = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
+    
+    # AI extraction metadata
+    confidence_score = Column(Float, nullable=True)  # 0.0 to 1.0
+    extraction_query = Column(Text, nullable=True)
+    raw_ai_response = Column(Text, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    user = relationship("User")
+
+
+class GeneratedInvoice(Base):
+    """Model for storing generated invoices from extracted data"""
+    
+    __tablename__ = "generated_invoices"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    contract_id = Column(String, ForeignKey("contracts.id"), nullable=False)
+    extracted_data_id = Column(String, ForeignKey("extracted_invoice_data.id"), nullable=False)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    
+    # Invoice details
+    invoice_number = Column(String(100), nullable=False, unique=True, index=True)
+    invoice_date = Column(DateTime(timezone=True), nullable=False)
+    due_date = Column(DateTime(timezone=True), nullable=False)
+    status = Column(SQLEnum(InvoiceStatus), nullable=False, default=InvoiceStatus.GENERATED)
+    
+    # Financial information
+    subtotal = Column(Float, nullable=False, default=0.0)
+    tax_amount = Column(Float, nullable=False, default=0.0)
+    total_amount = Column(Float, nullable=False, default=0.0)
+    currency = Column(String(10), nullable=False, default="USD")
+    
+    # Complete invoice data (JSON)
+    invoice_data = Column(JSON, nullable=False)
+    
+    # Generation metadata
+    generated_by = Column(String(100), nullable=False, default="ai_agent")
+    generation_metadata = Column(JSON, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    contract = relationship("Contract")
+    extracted_data = relationship("ExtractedInvoiceData")
+    user = relationship("User")

@@ -201,6 +201,13 @@ export class ContractsApi {
       requiresAuth: false,
     });
   }
+
+    /**
+     * Get contracts for a specific user
+     */
+    static async getContracts(userId: string): Promise<any> {
+      return apiClient.get(API_ENDPOINTS.CONTRACTS.GET_CONTRACTS(userId));
+    }
 }
 
 // ✅ Export instance methods (like authApi)
@@ -211,4 +218,5 @@ export const contractsApi = {
   processAndGenerateInvoice: ContractsApi.processAndGenerateInvoice.bind(ContractsApi),
   startInvoiceWorkflow: ContractsApi.startInvoiceWorkflow.bind(ContractsApi),
   healthCheck: ContractsApi.healthCheck.bind(ContractsApi),
+  getContracts: ContractsApi.getContracts.bind(ContractsApi),
 };
