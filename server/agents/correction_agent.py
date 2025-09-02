@@ -7,6 +7,7 @@ from .base_agent import BaseAgent
 from schemas.workflow_schemas import WorkflowState, AgentType, ProcessingStatus
 from schemas.contract_schemas import ContractInvoiceData
 from services.websocket_manager import get_websocket_manager
+from services.database_service import get_database_service
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class CorrectionAgent(BaseAgent):
     def __init__(self):
         super().__init__(AgentType.CORRECTION)
         self.websocket_manager = get_websocket_manager()
+        self.db_service = get_database_service()
     
     async def process(self, state: WorkflowState) -> WorkflowState:
         """
@@ -57,6 +59,15 @@ class CorrectionAgent(BaseAgent):
                 invoice_data=invoice_data,
                 state=state
             )
+            
+            # Save invoice to database
+            invoice_record = await self._save_invoice_to_database(corrected_invoice_json)
+            if invoice_record:
+                state["invoice_id"] = invoice_record.id
+                state["final_invoice"] = corrected_invoice_json  # Store for UI agent
+                self.logger.info(f"✅ Invoice saved to database with ID: {invoice_record.id}")
+            else:
+                self.logger.warning("⚠️ Failed to save invoice to database, but continuing with workflow")
             
             # Store final invoice JSON in state
             state["final_invoice_json"] = corrected_invoice_json
@@ -377,3 +388,12 @@ class CorrectionAgent(BaseAgent):
         }
         
         return invoice_json
+    
+    async def _save_invoice_to_database(self, invoice_json: Dict[str, Any]) -> Optional[Any]:
+        """Save the corrected invoice to the database"""
+        try:
+            invoice_record = await self.db_service.create_invoice(invoice_json)
+            return invoice_record
+        except Exception as e:
+            self.logger.error(f"❌ Failed to save invoice to database: {str(e)}")
+            return None

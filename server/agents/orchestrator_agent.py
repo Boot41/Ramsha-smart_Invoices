@@ -48,24 +48,25 @@ class OrchestratorAgent(BaseAgent):
     def _analyze_workflow_state(self, state: WorkflowState) -> Dict[str, Any]:
         """Analyze current state and decide next action"""
         
-        # FIRST: Check if workflow should be marked as completed
-        if state.get("workflow_completed"):
+        # Completed workflow check
+        if (state.get("workflow_completed") and 
+            not state.get("awaiting_websocket_connection")):
             return {
                 "next_action": "complete_with_errors",
                 "reason": "Workflow already marked as completed",
                 "confidence": 0.1
             }
         
-        # Check orchestrator decision count to prevent infinite loops
+        # Decision count guard
         decision_count = state.get("orchestrator_decision_count", 0)
-        if decision_count > 15:  # Lower threshold in orchestrator logic
+        if decision_count > 15:
             return {
                 "next_action": "complete_with_errors", 
                 "reason": f"Too many orchestrator decisions ({decision_count}) - terminating",
                 "confidence": 0.1
             }
         
-        # Check if max attempts exceeded - CRITICAL GUARD
+        # Max attempts exceeded
         if state["attempt_count"] >= state["max_attempts"]:
             return {
                 "next_action": "complete_with_errors",
@@ -73,7 +74,7 @@ class OrchestratorAgent(BaseAgent):
                 "confidence": 0.1
             }
         
-        # Check for critical errors
+        # Critical errors
         if self._has_critical_errors(state):
             return {
                 "next_action": "error_recovery",
@@ -81,16 +82,14 @@ class OrchestratorAgent(BaseAgent):
                 "confidence": 0.3
             }
         
-        # Handle retry status from error recovery - BUT CHECK ATTEMPTS FIRST
+        # Retry handling
         if state["processing_status"] == ProcessingStatus.NEEDS_RETRY.value:
-            # Double-check attempts before allowing retry
             if state["attempt_count"] >= state["max_attempts"]:
                 return {
                     "next_action": "complete_with_errors",
                     "reason": f"Cannot retry - max attempts ({state['max_attempts']}) already reached",
                     "confidence": 0.1
                 }
-            # Reset processing status and attempt contract processing again
             state["processing_status"] = ProcessingStatus.IN_PROGRESS.value
             return {
                 "next_action": "contract_processing",
@@ -98,7 +97,7 @@ class OrchestratorAgent(BaseAgent):
                 "confidence": 0.6
             }
         
-        # Handle failed status - end workflow
+        # Failed
         if state["processing_status"] == ProcessingStatus.FAILED.value:
             return {
                 "next_action": "complete_with_errors",
@@ -106,37 +105,7 @@ class OrchestratorAgent(BaseAgent):
                 "confidence": 0.1
             }
         
-        # Quality check results - handle first (we're past initial processing)
-        if state.get("quality_assurance_result"):
-            qa_result = state["quality_assurance_result"]
-            quality_score = qa_result.get("quality_score", 0.0)
-            
-            if quality_score >= 0.9:
-                return {
-                    "next_action": "storage_scheduling",
-                    "reason": f"High quality score ({quality_score}) - approve for storage",
-                    "confidence": 0.9
-                }
-            elif quality_score >= 0.7 and state["attempt_count"] >= 2:
-                return {
-                    "next_action": "storage_scheduling",
-                    "reason": f"Acceptable quality ({quality_score}) after multiple attempts",
-                    "confidence": 0.7
-                }
-            elif state["attempt_count"] < state["max_attempts"]:
-                return {
-                    "next_action": "feedback_learning",
-                    "reason": f"Low quality ({quality_score}) - learn and retry",
-                    "confidence": 0.5
-                }
-            else:
-                return {
-                    "next_action": "error_recovery",
-                    "reason": f"Persistent low quality ({quality_score}) - escalate",
-                    "confidence": 0.3
-                }
-        
-        # Initial state or failed contract processing - start/restart processing
+        # Initial state → contract processing
         if not state.get("contract_data") and state["processing_status"] in [
             ProcessingStatus.PENDING.value, 
             ProcessingStatus.IN_PROGRESS.value
@@ -147,7 +116,7 @@ class OrchestratorAgent(BaseAgent):
                 "confidence": 0.9
             }
         
-        # Contract processed but not validated - proceed to validation
+        # Contract processed → validation
         if (state.get("contract_data") and state.get("invoice_data") and 
             not state.get("validation_results")):
             return {
@@ -156,7 +125,7 @@ class OrchestratorAgent(BaseAgent):
                 "confidence": 0.9
             }
         
-        # Validation completed successfully - proceed to correction agent
+        # Validation passed → correction
         if (state.get("validation_results") and 
             state["validation_results"].get("is_valid") and
             not state["validation_results"].get("human_input_required") and
@@ -167,38 +136,68 @@ class OrchestratorAgent(BaseAgent):
                 "confidence": 0.9
             }
         
-        # Correction completed - workflow finished
+        # Correction completed → invoice generation
         if (state.get("correction_completed") and 
-            state.get("final_invoice_json")):
+            state.get("final_invoice_json") and
+            not state.get("invoice_data")):
+            return {
+                "next_action": "invoice_generation",
+                "reason": "Correction completed - generating invoice data",
+                "confidence": 0.9
+            }
+        
+        # Invoice generated → quality assurance
+        if (state.get("invoice_data") and 
+            not state.get("quality_score")):
+            return {
+                "next_action": "quality_assurance",
+                "reason": "Invoice generated - quality check required",
+                "confidence": 0.8
+            }
+        
+        # Quality passed → UI invoice generator
+        if (state.get("quality_score") and 
+            state.get("invoice_data") and
+            not state.get("ui_invoice_template")):
+            return {
+                "next_action": "ui_invoice_generator",
+                "reason": "Quality check passed - generating professional UI template",
+                "confidence": 0.9
+            }
+        
+        # UI template generated → complete
+        if (state.get("ui_invoice_template") and 
+            state.get("invoice_data")):
             state["workflow_completed"] = True
             return {
                 "next_action": "complete_success", 
-                "reason": "Correction completed - final invoice JSON generated",
+                "reason": "UI template generated - workflow completed successfully",
                 "confidence": 0.95
             }
         
-        # Validation requires human input - check if we have WebSocket connections
+        # Validation needs human input
         if (state.get("validation_results") and 
             state["validation_results"].get("human_input_required")):
             
             workflow_id = state.get("workflow_id")
-            # If we have active WebSocket connections, the validation agent should handle human input
             if workflow_id and self.websocket_manager.has_active_connections(workflow_id):
-                # Let the validation agent handle the WebSocket input - don't route anywhere
+                if state.get("awaiting_websocket_connection"):
+                    state["awaiting_websocket_connection"] = False
+                    state["workflow_completed"] = False
                 return {
                     "next_action": "waiting_for_human_input",
                     "reason": "Validation agent is handling human input via WebSocket",
                     "confidence": 0.9
                 }
             else:
-                # No WebSocket connections, complete with errors for HTTP-based input
+                state["awaiting_websocket_connection"] = True
                 return {
-                    "next_action": "complete_with_errors", 
-                    "reason": "Human input required but no WebSocket connections - pausing for HTTP input",
+                    "next_action": "waiting_for_human_input", 
+                    "reason": "Human input required but no WebSocket connections - waiting",
                     "confidence": 0.8
                 }
         
-        # Human input was provided and validation passed - proceed to correction
+        # Human input resolved → correction
         if (state.get("human_input_resolved") and 
             state["processing_status"] == ProcessingStatus.SUCCESS.value and
             state.get("validation_results") and
@@ -210,37 +209,8 @@ class OrchestratorAgent(BaseAgent):
                 "confidence": 0.9
             }
         
-        # Human input was provided but need to re-validate
-        if (state.get("human_input_resolved") and 
-            state["processing_status"] == ProcessingStatus.SUCCESS.value and
-            (not state.get("validation_results") or not state["validation_results"].get("is_valid"))):
-            return {
-                "next_action": "validation",
-                "reason": "Human input provided - re-validating data",
-                "confidence": 0.8
-            }
-        
-        # Schedule extracted - generate invoice
-        if (state.get("schedule_data") and 
-            not state.get("invoice_data")):
-            return {
-                "next_action": "invoice_generation",
-                "reason": "Schedule extracted - generate invoice",
-                "confidence": 0.8
-            }
-        
-        # Invoice generated - quality check
-        if (state.get("invoice_data") and 
-            not state.get("final_invoice")):
-            return {
-                "next_action": "quality_assurance",
-                "reason": "Invoice generated - quality check required",
-                "confidence": 0.7
-            }
-        
-        # Storage completed - final feedback
+        # Storage completed → feedback
         if state.get("storage_result") and state["storage_result"].get("status") == "success":
-            # Only proceed to feedback if we haven't done it yet
             if not state.get("feedback_result"):
                 return {
                     "next_action": "feedback_learning",
@@ -248,7 +218,6 @@ class OrchestratorAgent(BaseAgent):
                     "confidence": 0.8
                 }
             else:
-                # Storage and feedback both done - complete workflow
                 state["workflow_completed"] = True
                 return {
                     "next_action": "complete_success",
@@ -256,9 +225,8 @@ class OrchestratorAgent(BaseAgent):
                     "confidence": 0.9
                 }
         
-        # Learning completed - workflow done
+        # Learning completed → workflow done
         if state.get("feedback_result"):
-            # Mark workflow as completed to prevent further orchestrator cycles
             state["workflow_completed"] = True
             return {
                 "next_action": "complete_success", 
@@ -266,7 +234,7 @@ class OrchestratorAgent(BaseAgent):
                 "confidence": 0.9
             }
         
-        # Default case - something unexpected
+        # Default
         return {
             "next_action": "error_recovery",
             "reason": "Unexpected state - requires investigation",
@@ -276,18 +244,13 @@ class OrchestratorAgent(BaseAgent):
     def _has_critical_errors(self, state: WorkflowState) -> bool:
         """Check if state has critical errors that need immediate attention"""
         errors = state.get("errors", [])
-        
-        # More than 3 errors is critical
         if len(errors) > 3:
             return True
-        
-        # Check for specific critical error types
         critical_keywords = ["authentication", "permission", "database", "file_not_found"]
         for error in errors:
             error_msg = error.get("error", "").lower()
             if any(keyword in error_msg for keyword in critical_keywords):
                 return True
-        
         return False
     
     def _initialize_decision_rules(self) -> Dict[str, Any]:
@@ -310,8 +273,6 @@ def route_from_orchestrator(state: WorkflowState) -> str:
     decision = state.get("orchestrator_decision", {})
     next_action = decision.get("next_action", "error_recovery")
     
-    # CRITICAL FIX: If no decision is found, it means there's a state sync issue
-    # Re-run the orchestrator decision logic directly as a fallback
     if not decision:
         logger.warning("🚨 No orchestrator decision found in state - running fallback analysis")
         from agents.orchestrator_agent import OrchestratorAgent
@@ -320,7 +281,6 @@ def route_from_orchestrator(state: WorkflowState) -> str:
         next_action = fallback_decision.get("next_action", "error_recovery")
         logger.info(f"🔧 Fallback routing decision: {next_action}")
     elif next_action == "error_recovery" and decision.get("reason", "").startswith("Unexpected"):
-        # Only use fallback for truly unexpected default routing, not legitimate error recovery
         logger.warning("🚨 Default error_recovery routing detected - using fallback analysis")
         from agents.orchestrator_agent import OrchestratorAgent
         temp_orchestrator = OrchestratorAgent()
@@ -328,13 +288,13 @@ def route_from_orchestrator(state: WorkflowState) -> str:
         next_action = fallback_decision.get("next_action", "error_recovery")
         logger.info(f"🔧 Fallback routing decision: {next_action}")
     
-    # Map orchestrator decisions to LangGraph node names
     routing_map = {
         "contract_processing": "contract_processing",
         "validation": "validation", 
         "schedule_extraction": "schedule_extraction",
         "invoice_generation": "invoice_generation",
         "quality_assurance": "quality_assurance",
+        "ui_invoice_generator": "ui_invoice_generator",
         "storage_scheduling": "storage_scheduling",
         "feedback_learning": "feedback_learning",
         "error_recovery": "error_recovery",

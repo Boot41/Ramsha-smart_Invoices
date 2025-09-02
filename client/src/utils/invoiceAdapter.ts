@@ -1,4 +1,4 @@
-import type { ContractInvoiceData } from '../../api/contracts';
+import type { ContractInvoiceData } from '@client-api/contracts';
 
 export interface AdaptedInvoiceData {
   id: string;

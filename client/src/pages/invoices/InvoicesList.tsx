@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+
+import React, { useMemo } from 'react';
 import { Card, Button, Badge, Table } from '../../components/ui';
-import { mockInvoicesLegacy } from '../../data/mockData';
 import { useInvoiceStore } from '../../../stores/invoiceStore';
 import { createInvoiceFromContractData } from '../../utils/invoiceAdapter';
 import { Plus, Filter, Download, Eye, Edit } from 'lucide-react';
@@ -16,7 +16,7 @@ const InvoicesList: React.FC = () => {
       );
       return realInvoices;
     }
-    return mockInvoicesLegacy;
+    return [];
   }, [invoiceGeneration, contractProcessing]);
 
   const getStatusColor = (status: string) => {
@@ -106,7 +106,7 @@ const InvoicesList: React.FC = () => {
           <p className="text-gray-600 mt-2">
             {hasRealData 
               ? `Showing invoice data extracted from ${contractProcessing?.contract_name || 'processed contract'}`
-              : 'Manage and track all your invoices (showing mock data - process a contract to see real data)'}
+              : 'Manage and track all your invoices. Process a contract to see real data.'}
           </p>
         </div>
         <div className="flex space-x-3 mt-4 sm:mt-0">

@@ -24,6 +24,9 @@ export const API_ENDPOINTS = {
     PROCESS_AND_GENERATE_INVOICE: '/contracts/process-and-generate-invoice',
     HEALTH: '/contracts/health',
   },
+  ORCHESTRATOR: {
+    START_INVOICE_WORKFLOW: '/api/v1/orchestrator/workflow/invoice/start',
+  }
   // Add other API endpoints as needed
 };
 

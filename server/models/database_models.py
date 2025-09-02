@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Boolean, Integer, Enum as SQLEnum, ForeignKey, Text
+from sqlalchemy import Column, String, DateTime, Boolean, Integer, Enum as SQLEnum, ForeignKey, Text, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSON
@@ -21,6 +21,15 @@ class UserStatus(str, enum.Enum):
     INACTIVE = "inactive"
     SUSPENDED = "suspended"
     PENDING_VERIFICATION = "pending_verification"
+
+
+class InvoiceStatus(str, enum.Enum):
+    DRAFT = "draft"
+    GENERATED = "generated"
+    SENT = "sent"
+    PAID = "paid"
+    OVERDUE = "overdue"
+    CANCELLED = "cancelled"
 
 
 class Address(Base):
@@ -290,3 +299,87 @@ class UserSession(Base):
     
     # Relationship
     user = relationship("User", backref="sessions")
+
+
+class Invoice(Base):
+    """Invoice model for storing generated invoice data"""
+    
+    __tablename__ = "invoices"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    invoice_number = Column(String(100), nullable=False, unique=True, index=True)
+    workflow_id = Column(String(100), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    
+    # Invoice details
+    invoice_date = Column(DateTime(timezone=True), nullable=False)
+    due_date = Column(DateTime(timezone=True), nullable=False)
+    status = Column(SQLEnum(InvoiceStatus), nullable=False, default=InvoiceStatus.GENERATED)
+    
+    # Parties information
+    client_name = Column(String(255), nullable=False)
+    client_email = Column(String(255), nullable=True)
+    client_address = Column(Text, nullable=True)
+    client_phone = Column(String(50), nullable=True)
+    
+    service_provider_name = Column(String(255), nullable=False)
+    service_provider_email = Column(String(255), nullable=True)
+    service_provider_address = Column(Text, nullable=True)
+    service_provider_phone = Column(String(50), nullable=True)
+    
+    # Financial information
+    subtotal = Column(Float, nullable=False, default=0.0)
+    tax_amount = Column(Float, nullable=False, default=0.0)
+    total_amount = Column(Float, nullable=False, default=0.0)
+    currency = Column(String(10), nullable=False, default="USD")
+    
+    # Contract details
+    contract_title = Column(String(255), nullable=True)
+    contract_type = Column(String(100), nullable=True)
+    contract_reference = Column(String(255), nullable=True)
+    
+    # Complete invoice data (JSON)
+    invoice_data = Column(JSON, nullable=False)
+    
+    # AI generation metadata
+    generated_by_agent = Column(String(100), nullable=False, default="correction_agent")
+    confidence_score = Column(Float, nullable=True)
+    quality_score = Column(Float, nullable=True)
+    human_reviewed = Column(Boolean, default=False)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    user = relationship("User", backref="invoices")
+    invoice_templates = relationship("InvoiceTemplate", backref="invoice", cascade="all, delete-orphan")
+
+
+class InvoiceTemplate(Base):
+    """Invoice template model for storing generated React components"""
+    
+    __tablename__ = "invoice_templates"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    invoice_id = Column(String, ForeignKey("invoices.id"), nullable=False)
+    
+    # Template details
+    template_name = Column(String(255), nullable=False)
+    component_name = Column(String(255), nullable=False)
+    template_type = Column(String(100), nullable=False, default="Professional Invoice Template")
+    
+    # File system details
+    file_path = Column(String(500), nullable=False)
+    component_code = Column(Text, nullable=False)
+    
+    # Generation metadata
+    generated_by = Column(String(100), nullable=False, default="ui_invoice_generator")
+    model_used = Column(String(100), nullable=True)
+    
+    # Status and availability
+    is_active = Column(Boolean, default=True)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

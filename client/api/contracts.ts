@@ -93,6 +93,14 @@ export interface ContractQueryResponse {
   generated_at: string;
 }
 
+
+export interface StartWorkflowResponse {
+  workflow_id: string;
+  status: string;
+  message: string;
+  received_at: string;
+}
+
 export class ContractsApi {
   /**
    * Upload and process a contract PDF file
@@ -161,6 +169,26 @@ export class ContractsApi {
   }
 
   /**
+   * Start a new agentic invoice processing workflow
+   */
+  static async startInvoiceWorkflow(
+    file: File,
+    userId: string,
+    contractName: string
+  ): Promise<StartWorkflowResponse> {
+    const formData = new FormData();
+    formData.append('contract_file', file);
+    formData.append('user_id', userId);
+    formData.append('contract_name', contractName);
+
+    return apiClient.post<StartWorkflowResponse>(
+      API_ENDPOINTS.ORCHESTRATOR.START_INVOICE_WORKFLOW,
+      formData,
+      { isMultipart: true }
+    );
+  }
+
+  /**
    * Check health status of contract processing service
    */
   static async healthCheck(): Promise<{
@@ -181,5 +209,6 @@ export const contractsApi = {
   generateInvoiceData: ContractsApi.generateInvoiceData.bind(ContractsApi),
   queryContract: ContractsApi.queryContract.bind(ContractsApi),
   processAndGenerateInvoice: ContractsApi.processAndGenerateInvoice.bind(ContractsApi),
+  startInvoiceWorkflow: ContractsApi.startInvoiceWorkflow.bind(ContractsApi),
   healthCheck: ContractsApi.healthCheck.bind(ContractsApi),
 };

@@ -1,9 +1,14 @@
-import React, { useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { useInvoiceStore } from "../../../stores/invoiceStore";
 import { createInvoiceFromContractData } from "../../utils/invoiceAdapter";
+import InvoicePreview from "../../components/InvoicePreview";
 
 const InvoiceTemplate = () => {
-  const { invoiceGeneration, contractProcessing } = useInvoiceStore();
+  const { invoiceGeneration, contractProcessing, uiInvoiceComponent } = useInvoiceStore();
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+  const [loading, setLoading] = useState(false);
 
   const invoiceData = useMemo(() => {
     if (invoiceGeneration?.invoice_data) {
@@ -13,78 +18,188 @@ const InvoiceTemplate = () => {
       );
       return adaptedInvoices[0]; // Get the first (and typically only) invoice
     }
-    return null;
+    return null; // No sample data - show message if no real data
   }, [invoiceGeneration, contractProcessing]);
 
-  if (!invoiceData) {
-    return (
-      <div className="p-6 text-center">
-        <p className="text-gray-600 mb-4">No invoice data available.</p>
-        <p className="text-sm text-gray-500">
-          Process a contract to generate invoice data and view the template here.
-        </p>
-      </div>
-    );
-  }
+  // Load available templates
+  useEffect(() => {
+    const loadTemplates = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch('/api/templates/');
+        if (response.ok) {
+          const data = await response.json();
+          setTemplates(data.templates || []);
+          if (data.templates && data.templates.length > 0) {
+            setSelectedTemplate(data.templates[0].id);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading templates:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadTemplates();
+  }, []);
+
+  // Use template from UI component if available, otherwise use selected template
+  const activeTemplateId = uiInvoiceComponent?.component_name ? 
+    `template-${uiInvoiceComponent.component_name.toLowerCase()}` : 
+    selectedTemplate;
 
   return (
-    <div className="p-6 border rounded-xl shadow-md bg-white w-[800px] mx-auto">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Invoice</h1>
-        <p className="text-gray-600">#{invoiceData.invoiceNumber}</p>
-      </div>
-
-      {/* Client & Company Info */}
-      <div className="grid grid-cols-2 gap-6 mb-6">
+    <div className="container mx-auto p-4">
+      {/* Header with navigation */}
+      <div className="mb-6 flex justify-between items-center">
         <div>
-          <h2 className="font-semibold">Billed To:</h2>
-          <p>{invoiceData.clientName}</p>
-          <p>{invoiceData.clientEmail}</p>
+          <h1 className="text-2xl font-bold text-gray-900">Invoice Template Preview</h1>
+          <p className="text-sm text-gray-600">AI-generated HTML template with secure rendering</p>
         </div>
-        <div className="text-right">
-          <h2 className="font-semibold">From:</h2>
-          <p>{invoiceData.companyName}</p>
-          <p>{invoiceData.companyEmail}</p>
+        <div className="flex space-x-2">
+          <Link 
+            to="/invoices/preview-demo"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          >
+            🎨 Full Demo
+          </Link>
+          <Link 
+            to="/invoices/templates-list"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            📋 View All Templates
+          </Link>
         </div>
       </div>
 
-      {/* Items Table */}
-      <table className="w-full border-collapse mb-6">
-        <thead>
-          <tr className="bg-gray-100">
-            <th className="border p-2 text-left">Item</th>
-            <th className="border p-2 text-right">Qty</th>
-            <th className="border p-2 text-right">Price</th>
-            <th className="border p-2 text-right">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {invoiceData.items.map((item, index) => (
-            <tr key={index}>
-              <td className="border p-2">{item.description}</td>
-              <td className="border p-2 text-right">{item.quantity}</td>
-              <td className="border p-2 text-right">${item.unitPrice}</td>
-              <td className="border p-2 text-right">
-                ${item.totalPrice}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* Template Selector */}
+      {templates.length > 0 && (
+        <div className="mb-6 bg-white rounded-lg shadow p-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Select Template:
+          </label>
+          <select 
+            value={selectedTemplate} 
+            onChange={(e) => setSelectedTemplate(e.target.value)}
+            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            {templates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.name} ({template.type})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
-      {/* Summary */}
-      <div className="flex justify-end">
-        <div className="text-right">
-          <p className="font-semibold">
-            Subtotal: ${invoiceData.amount.toFixed(2)}
+      {/* Template info card */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <div className="flex items-start">
+          <div className="flex-shrink-0">
+            <span className="text-2xl">🎨</span>
+          </div>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-blue-800">
+              Secure HTML Template Preview
+            </h3>
+            <div className="mt-2 text-sm text-blue-700">
+              <p>This is a secure HTML template generated by AI using Gemini-2.0-flash with XSS protection.</p>
+              {activeTemplateId && (
+                <p className="mt-1">
+                  <strong>Template ID:</strong> <code className="bg-white px-1 rounded">{activeTemplateId}</code>
+                  {uiInvoiceComponent && (
+                    <span>
+                      • <strong className="ml-2">Source:</strong> <code className="bg-white px-1 rounded">AI Generated</code>
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Secure invoice template preview */}
+      {activeTemplateId ? (
+        <div className="bg-white shadow-lg rounded-lg overflow-hidden">
+          <InvoicePreview
+            templateId={activeTemplateId}
+            templateName={templates.find(t => t.id === activeTemplateId)?.name || 'Template'}
+            invoiceData={invoiceData}
+            invoiceNumber="INV-2024-001"
+            invoiceDate={new Date()}
+            dueDate={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)} // 30 days from now
+            status="Draft"
+            scale={0.8}
+            showControls={true}
+          />
+        </div>
+      ) : loading ? (
+        <div className="bg-white shadow-lg rounded-lg p-8 text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading templates...</p>
+        </div>
+      ) : (
+        <div className="bg-white shadow-lg rounded-lg p-8 text-center">
+          <div className="text-gray-400 text-6xl mb-4">📄</div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No Templates Available</h3>
+          <p className="text-gray-600 mb-4">
+            Process a contract through the workflow to generate AI templates or visit the full demo.
           </p>
-          <p className="font-semibold">
-            Tax: ${(invoiceData.taxAmount || 0).toFixed(2)}
-          </p>
-          <p className="text-xl font-bold">
-            Total: ${invoiceData.totalAmount.toFixed(2)}
-          </p>
+          <div className="flex justify-center space-x-4">
+            <Link 
+              to="/contracts" 
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-indigo-600 bg-indigo-100 hover:bg-indigo-200"
+            >
+              📋 Process Contract
+            </Link>
+            <Link 
+              to="/invoices/preview-demo" 
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-green-600 bg-green-100 hover:bg-green-200"
+            >
+              🎨 View Demo
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Security & Template features */}
+      <div className="mt-6 bg-gray-50 rounded-lg p-4">
+        <h3 className="text-lg font-medium text-gray-900 mb-3">Security & Template Features</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="flex items-center">
+            <span className="text-green-500 mr-2">🛡️</span>
+            <span className="text-sm">XSS Protection</span>
+          </div>
+          <div className="flex items-center">
+            <span className="text-green-500 mr-2">🔒</span>
+            <span className="text-sm">Sandboxed Rendering</span>
+          </div>
+          <div className="flex items-center">
+            <span className="text-green-500 mr-2">✅</span>
+            <span className="text-sm">AI-Generated HTML/CSS</span>
+          </div>
+          <div className="flex items-center">
+            <span className="text-green-500 mr-2">✅</span>
+            <span className="text-sm">Dynamic Data Injection</span>
+          </div>
+          <div className="flex items-center">
+            <span className="text-green-500 mr-2">✅</span>
+            <span className="text-sm">PDF Export</span>
+          </div>
+          <div className="flex items-center">
+            <span className="text-green-500 mr-2">✅</span>
+            <span className="text-sm">Print-Friendly</span>
+          </div>
+          <div className="flex items-center">
+            <span className="text-green-500 mr-2">✅</span>
+            <span className="text-sm">Responsive Design</span>
+          </div>
+          <div className="flex items-center">
+            <span className="text-green-500 mr-2">✅</span>
+            <span className="text-sm">Database Integration</span>
+          </div>
         </div>
       </div>
     </div>

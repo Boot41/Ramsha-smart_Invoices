@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Invoice {{INVOICE_NUMBER}}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            border-bottom: 3px solid #007bff;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .company-name {
+            font-size: 28px;
+            font-weight: bold;
+            color: #007bff;
+            margin-bottom: 10px;
+        }
+        
+        .invoice-title {
+            font-size: 24px;
+            color: #666;
+            margin: 20px 0;
+        }
+        
+        .invoice-details {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+        }
+        
+        .invoice-meta {
+            text-align: right;
+        }
+        
+        .invoice-meta strong {
+            color: #007bff;
+        }
+        
+        .billing-section {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+        }
+        
+        .billing-box {
+            width: 45%;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .billing-box h3 {
+            color: #007bff;
+            margin-top: 0;
+            font-size: 16px;
+        }
+        
+        .services-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .services-table th {
+            background: #007bff;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+        }
+        
+        .services-table td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .services-table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        .total-section {
+            text-align: right;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #007bff;
+        }
+        
+        .total-amount {
+            font-size: 20px;
+            font-weight: bold;
+            color: #007bff;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        
+        .payment-terms {
+            margin-top: 30px;
+            padding: 15px;
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            border-radius: 4px;
+        }
+        
+        .payment-terms h4 {
+            color: #856404;
+            margin-top: 0;
+        }
+        
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            border-top: 1px solid #ddd;
+            padding-top: 20px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .status-draft { background: #f8f9fa; color: #6c757d; }
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-paid { background: #d1edff; color: #0c5460; }
+        .status-overdue { background: #f8d7da; color: #721c24; }
+        
+        @media print {
+            body { margin: 0; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="company-name">{{PROVIDER_NAME}}</div>
+        <div class="invoice-title">INVOICE</div>
+    </div>
+
+    <div class="invoice-details">
+        <div class="invoice-info">
+            <h3>Invoice Details</h3>
+            <p><strong>Invoice #:</strong> {{INVOICE_NUMBER}}</p>
+            <p><strong>Date:</strong> {{INVOICE_DATE}}</p>
+            <p><strong>Due Date:</strong> {{DUE_DATE}}</p>
+        </div>
+        <div class="invoice-meta">
+            <span class="status-badge status-{{STATUS}}">{{STATUS}}</span>
+        </div>
+    </div>
+
+    <div class="billing-section">
+        <div class="billing-box">
+            <h3>Bill From:</h3>
+            <strong>{{PROVIDER_NAME}}</strong><br>
+            {{PROVIDER_ADDRESS}}<br>
+            {{PROVIDER_EMAIL}}<br>
+            {{PROVIDER_PHONE}}
+        </div>
+        
+        <div class="billing-box">
+            <h3>Bill To:</h3>
+            <strong>{{CLIENT_NAME}}</strong><br>
+            {{CLIENT_ADDRESS}}<br>
+            {{CLIENT_EMAIL}}<br>
+            {{CLIENT_PHONE}}
+        </div>
+    </div>
+
+    <table class="services-table">
+        <thead>
+            <tr>
+                <th>Description</th>
+                <th>Quantity</th>
+                <th>Unit Price</th>
+                <th>Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{SERVICE_ITEMS}}
+        </tbody>
+    </table>
+
+    <div class="total-section">
+        <div class="total-amount">
+            Total: ${{TOTAL_AMOUNT}}
+        </div>
+    </div>
+
+    <div class="payment-terms">
+        <h4>Payment Terms</h4>
+        <p>{{PAYMENT_TERMS}}</p>
+        <p><strong>Notes:</strong> {{NOTES}}</p>
+    </div>
+
+    <div class="footer">
+        <p>Thank you for your business!</p>
+        <p>Generated by Smart Invoice Scheduler</p>
+    </div>
+</body>
+</html>

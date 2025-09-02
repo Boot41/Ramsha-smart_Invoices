@@ -7,11 +7,20 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Badge } from '../../components/ui/Badge';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '../../components/ui/Table';
 import { mockRentalAgreements } from '../../data/mockData';
-import { contractsApi } from '../../../api/contracts';
-import type { RentalAgreement, SelectOption } from '../../../types';
+import { contractsApi } from '@client-api/contracts';
+import type { RentalAgreement, SelectOption } from '@types/index';
+import { useAuth } from '@hooks/useAuth';
+
+import { useInvoiceStore } from '@stores/invoiceStore';
+
+// Debug log to verify import works
+console.log('ContractsApi loaded:', !!contractsApi);
 
 const ContractsList: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const { setWorkflowId } = useInvoiceStore();
   const [agreements] = useState<RentalAgreement[]>(mockRentalAgreements);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -70,23 +79,21 @@ const ContractsList: React.FC = () => {
     setUploadSuccess(null);
     
     try {
-      // Get user ID from auth context or localStorage 
-      // For now using a mock user ID, replace with actual user auth
-      const userId = 'user123'; // TODO: Get from auth context
+      const userId = user?.id || 'user123';
       
-      // Use rental-specific query for better extraction
-      const result = await contractsApi.processAndGenerateInvoice(selectedFile, userId);
+      const result = await contractsApi.startInvoiceWorkflow(selectedFile, userId, selectedFile.name);
       
-      setUploadSuccess(`Contract "${selectedFile.name}" processed successfully! Generated invoice data for rental agreement.`);
+      setWorkflowId(result.workflow_id);
+
+      setUploadSuccess(`Workflow for "${selectedFile.name}" started successfully!`);
       
-      // Reset form
       setSelectedFile(null);
       
-      // Close dialog after a short delay to show success message
       setTimeout(() => {
         setShowUploadDialog(false);
         setUploadSuccess(null);
-      }, 3000);
+        navigate(`/workflow/${result.workflow_id}`);
+      }, 2000);
       
     } catch (error) {
       console.error('Contract upload failed:', error);
@@ -97,10 +104,9 @@ const ContractsList: React.FC = () => {
   };
 
   const handleSelectContract = (agreement: RentalAgreement) => {
-    // Navigate to invoice templates with the selected agreement
-    navigate('/invoices/templates', { 
-      state: { selectedAgreement: agreement } 
-    });
+    // This function is not used in the current workflow
+    // but we can keep it for future use.
+    console.log('Selected contract:', agreement);
   };
 
   return (

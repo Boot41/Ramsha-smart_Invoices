@@ -1,4 +1,4 @@
-simport { apiClient } from './base';
+import { apiClient } from './base';
 import { API_ENDPOINTS } from './config';
 import {
   DocumentUploadRequest,

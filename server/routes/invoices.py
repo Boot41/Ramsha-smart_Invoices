@@ -1,6 +1,204 @@
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query
+from typing import List, Optional
+from services.database_service import get_database_service
+from models.database_models import InvoiceStatus
 
 router = APIRouter(prefix="/invoices", tags=["invoice management"])
+
+# Real Database Endpoints for Viewing Invoice Data
+
+@router.get("/database/list")
+async def list_database_invoices(
+    status: Optional[str] = Query(None, description="Filter by status"),
+    limit: int = Query(50, description="Number of invoices to return"),
+    offset: int = Query(0, description="Number of invoices to skip")
+):
+    """Get all invoices from database with optional filtering"""
+    try:
+        db_service = get_database_service()
+        
+        # Convert string status to enum if provided
+        status_filter = None
+        if status:
+            try:
+                status_filter = InvoiceStatus(status.lower())
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+        
+        invoices, total = await db_service.list_invoices(
+            status=status_filter,
+            limit=limit,
+            offset=offset
+        )
+        
+        # Convert to dict for JSON serialization
+        invoice_list = []
+        for invoice in invoices:
+            invoice_dict = {
+                "id": invoice.id,
+                "invoice_number": invoice.invoice_number,
+                "workflow_id": invoice.workflow_id,
+                "client_name": invoice.client_name,
+                "client_email": invoice.client_email,
+                "service_provider_name": invoice.service_provider_name,
+                "total_amount": invoice.total_amount,
+                "currency": invoice.currency,
+                "status": invoice.status.value,
+                "invoice_date": invoice.invoice_date.isoformat() if invoice.invoice_date else None,
+                "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
+                "contract_title": invoice.contract_title,
+                "generated_by_agent": invoice.generated_by_agent,
+                "confidence_score": invoice.confidence_score,
+                "quality_score": invoice.quality_score,
+                "human_reviewed": invoice.human_reviewed,
+                "created_at": invoice.created_at.isoformat() if invoice.created_at else None,
+                "updated_at": invoice.updated_at.isoformat() if invoice.updated_at else None
+            }
+            invoice_list.append(invoice_dict)
+        
+        return {
+            "invoices": invoice_list,
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching invoices: {str(e)}")
+
+@router.get("/database/{invoice_id}")
+async def get_database_invoice(invoice_id: str):
+    """Get a specific invoice by ID with full data"""
+    try:
+        db_service = get_database_service()
+        invoice = await db_service.get_invoice_by_id(invoice_id)
+        
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+        
+        return {
+            "id": invoice.id,
+            "invoice_number": invoice.invoice_number,
+            "workflow_id": invoice.workflow_id,
+            "user_id": invoice.user_id,
+            "invoice_date": invoice.invoice_date.isoformat() if invoice.invoice_date else None,
+            "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
+            "status": invoice.status.value,
+            
+            # Client information
+            "client_name": invoice.client_name,
+            "client_email": invoice.client_email,
+            "client_address": invoice.client_address,
+            "client_phone": invoice.client_phone,
+            
+            # Service provider information
+            "service_provider_name": invoice.service_provider_name,
+            "service_provider_email": invoice.service_provider_email,
+            "service_provider_address": invoice.service_provider_address,
+            "service_provider_phone": invoice.service_provider_phone,
+            
+            # Financial information
+            "subtotal": invoice.subtotal,
+            "tax_amount": invoice.tax_amount,
+            "total_amount": invoice.total_amount,
+            "currency": invoice.currency,
+            
+            # Contract details
+            "contract_title": invoice.contract_title,
+            "contract_type": invoice.contract_type,
+            "contract_reference": invoice.contract_reference,
+            
+            # Complete invoice data (JSON)
+            "invoice_data": invoice.invoice_data,
+            
+            # AI generation metadata
+            "generated_by_agent": invoice.generated_by_agent,
+            "confidence_score": invoice.confidence_score,
+            "quality_score": invoice.quality_score,
+            "human_reviewed": invoice.human_reviewed,
+            
+            # Timestamps
+            "created_at": invoice.created_at.isoformat() if invoice.created_at else None,
+            "updated_at": invoice.updated_at.isoformat() if invoice.updated_at else None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching invoice: {str(e)}")
+
+@router.get("/database/workflow/{workflow_id}")
+async def get_invoice_by_workflow(workflow_id: str):
+    """Get invoice by workflow ID"""
+    try:
+        db_service = get_database_service()
+        invoice = await db_service.get_invoice_by_workflow_id(workflow_id)
+        
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Invoice not found for this workflow")
+        
+        return {
+            "id": invoice.id,
+            "invoice_number": invoice.invoice_number,
+            "workflow_id": invoice.workflow_id,
+            "client_name": invoice.client_name,
+            "service_provider_name": invoice.service_provider_name,
+            "total_amount": invoice.total_amount,
+            "status": invoice.status.value,
+            "contract_title": invoice.contract_title,
+            "invoice_data": invoice.invoice_data,  # Full JSON data
+            "created_at": invoice.created_at.isoformat() if invoice.created_at else None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching invoice: {str(e)}")
+
+@router.get("/database/templates")
+async def list_invoice_templates(
+    invoice_id: Optional[str] = Query(None, description="Filter by invoice ID"),
+    limit: int = Query(50, description="Number of templates to return"),
+    offset: int = Query(0, description="Number of templates to skip")
+):
+    """Get all invoice templates from database"""
+    try:
+        db_service = get_database_service()
+        templates, total = await db_service.list_invoice_templates(
+            invoice_id=invoice_id,
+            is_active=True,
+            limit=limit,
+            offset=offset
+        )
+        
+        template_list = []
+        for template in templates:
+            template_dict = {
+                "id": template.id,
+                "invoice_id": template.invoice_id,
+                "template_name": template.template_name,
+                "component_name": template.component_name,
+                "template_type": template.template_type,
+                "file_path": template.file_path,
+                "generated_by": template.generated_by,
+                "model_used": template.model_used,
+                "is_active": template.is_active,
+                "created_at": template.created_at.isoformat() if template.created_at else None,
+                "updated_at": template.updated_at.isoformat() if template.updated_at else None
+            }
+            template_list.append(template_dict)
+        
+        return {
+            "templates": template_list,
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching templates: {str(e)}")
+
+# Mock Endpoints (existing)
 
 @router.post("/create_invoice")
 async def create_invoice():

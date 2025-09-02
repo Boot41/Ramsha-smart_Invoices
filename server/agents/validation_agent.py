@@ -426,6 +426,9 @@ class ValidationAgent(BaseAgent):
         for key in keys[:-1]:
             if key not in current:
                 current[key] = {}
+            elif current[key] is None:
+                # If the field exists but is None, replace with empty dict
+                current[key] = {}
             current = current[key]
         
         # Set the final value

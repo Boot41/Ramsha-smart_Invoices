@@ -6,7 +6,7 @@ from sqlalchemy import select, update, delete, and_, or_
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
 from db.postgresdb import AsyncSessionLocal
-from models.database_models import User, Address, SecurityEvent, UserSession, UserRole, UserStatus
+from models.database_models import User, Address, SecurityEvent, UserSession, UserRole, UserStatus, Invoice, InvoiceTemplate, InvoiceStatus
 from schemas.auth_schemas import (
     UserRegistrationRequest, UpdateProfileRequest, 
     SecurityEventType, AuthStatus
@@ -429,6 +429,216 @@ class DatabaseService:
                 
         except Exception as e:
             logger.error(f"❌ Error listing users: {str(e)}")
+            return [], 0
+
+    # Invoice Operations
+    async def create_invoice(self, invoice_data: Dict[str, Any]) -> Optional[Invoice]:
+        """Create a new invoice in the database"""
+        try:
+            async with self.get_session() as session:
+                # Extract data from invoice JSON
+                header = invoice_data.get("invoice_header", {})
+                parties = invoice_data.get("parties", {})
+                client = parties.get("client", {})
+                provider = parties.get("service_provider", {})
+                payment_info = invoice_data.get("payment_information", {})
+                totals = invoice_data.get("totals", {})
+                contract_details = invoice_data.get("contract_details", {})
+                metadata = invoice_data.get("metadata", {})
+                
+                # Parse dates
+                invoice_date = datetime.fromisoformat(header.get("invoice_date", datetime.now().isoformat()))
+                due_date = datetime.fromisoformat(header.get("due_date", datetime.now().isoformat()))
+                
+                invoice = Invoice(
+                    invoice_number=header.get("invoice_id", ""),
+                    workflow_id=header.get("workflow_id", ""),
+                    user_id=metadata.get("user_id"),
+                    invoice_date=invoice_date,
+                    due_date=due_date,
+                    status=InvoiceStatus.GENERATED,
+                    
+                    # Client information
+                    client_name=client.get("name", ""),
+                    client_email=client.get("email"),
+                    client_address=client.get("address"),
+                    client_phone=client.get("phone"),
+                    
+                    # Service provider information
+                    service_provider_name=provider.get("name", ""),
+                    service_provider_email=provider.get("email"),
+                    service_provider_address=provider.get("address"),
+                    service_provider_phone=provider.get("phone"),
+                    
+                    # Financial information
+                    subtotal=float(totals.get("subtotal", 0)),
+                    tax_amount=float(totals.get("tax_amount", 0)),
+                    total_amount=float(totals.get("total_amount", 0)),
+                    currency=payment_info.get("currency", "USD"),
+                    
+                    # Contract details
+                    contract_title=contract_details.get("contract_type"),
+                    contract_type=contract_details.get("contract_type"),
+                    contract_reference=header.get("contract_reference"),
+                    
+                    # Complete invoice data
+                    invoice_data=invoice_data,
+                    
+                    # AI metadata
+                    generated_by_agent="correction_agent",
+                    confidence_score=float(metadata.get("confidence_score", 0)),
+                    quality_score=float(metadata.get("quality_score", 0)),
+                    human_reviewed=metadata.get("human_input_applied", False)
+                )
+                
+                session.add(invoice)
+                await session.commit()
+                await session.refresh(invoice)
+                
+                logger.info(f"✅ Invoice created in database: {invoice.invoice_number}")
+                return invoice
+                
+        except Exception as e:
+            logger.error(f"❌ Error creating invoice: {str(e)}")
+            return None
+    
+    async def get_invoice_by_id(self, invoice_id: str) -> Optional[Invoice]:
+        """Get invoice by ID"""
+        try:
+            async with self.get_session() as session:
+                result = await session.execute(
+                    select(Invoice).where(Invoice.id == invoice_id)
+                )
+                return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"❌ Error getting invoice by ID: {str(e)}")
+            return None
+    
+    async def get_invoice_by_workflow_id(self, workflow_id: str) -> Optional[Invoice]:
+        """Get invoice by workflow ID"""
+        try:
+            async with self.get_session() as session:
+                result = await session.execute(
+                    select(Invoice).where(Invoice.workflow_id == workflow_id)
+                )
+                return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"❌ Error getting invoice by workflow ID: {str(e)}")
+            return None
+    
+    async def list_invoices(
+        self,
+        user_id: Optional[str] = None,
+        status: Optional[InvoiceStatus] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> Tuple[List[Invoice], int]:
+        """List invoices with filtering and pagination"""
+        try:
+            async with self.get_session() as session:
+                # Base query
+                query = select(Invoice).order_by(Invoice.created_at.desc())
+                count_query = select(Invoice.id)
+                
+                # Apply filters
+                if user_id:
+                    query = query.where(Invoice.user_id == user_id)
+                    count_query = count_query.where(Invoice.user_id == user_id)
+                if status:
+                    query = query.where(Invoice.status == status)
+                    count_query = count_query.where(Invoice.status == status)
+                
+                # Get count
+                count_result = await session.execute(count_query)
+                total = len(count_result.scalars().all())
+                
+                # Apply pagination
+                query = query.offset(offset).limit(limit)
+                
+                # Get invoices
+                result = await session.execute(query)
+                invoices = result.scalars().all()
+                
+                return invoices, total
+                
+        except Exception as e:
+            logger.error(f"❌ Error listing invoices: {str(e)}")
+            return [], 0
+    
+    # Invoice Template Operations
+    async def create_invoice_template(
+        self,
+        invoice_id: str,
+        template_name: str,
+        component_name: str,
+        template_type: str,
+        file_path: str,
+        component_code: str,
+        model_used: Optional[str] = None
+    ) -> Optional[InvoiceTemplate]:
+        """Create a new invoice template"""
+        try:
+            async with self.get_session() as session:
+                template = InvoiceTemplate(
+                    invoice_id=invoice_id,
+                    template_name=template_name,
+                    component_name=component_name,
+                    template_type=template_type,
+                    file_path=file_path,
+                    component_code=component_code,
+                    generated_by="ui_invoice_generator",
+                    model_used=model_used,
+                    is_active=True
+                )
+                
+                session.add(template)
+                await session.commit()
+                await session.refresh(template)
+                
+                logger.info(f"✅ Invoice template created: {template_name}")
+                return template
+                
+        except Exception as e:
+            logger.error(f"❌ Error creating invoice template: {str(e)}")
+            return None
+    
+    async def list_invoice_templates(
+        self,
+        invoice_id: Optional[str] = None,
+        is_active: bool = True,
+        limit: int = 50,
+        offset: int = 0
+    ) -> Tuple[List[InvoiceTemplate], int]:
+        """List invoice templates with filtering"""
+        try:
+            async with self.get_session() as session:
+                # Base query
+                query = select(InvoiceTemplate).order_by(InvoiceTemplate.created_at.desc())
+                count_query = select(InvoiceTemplate.id)
+                
+                # Apply filters
+                if invoice_id:
+                    query = query.where(InvoiceTemplate.invoice_id == invoice_id)
+                    count_query = count_query.where(InvoiceTemplate.invoice_id == invoice_id)
+                
+                query = query.where(InvoiceTemplate.is_active == is_active)
+                count_query = count_query.where(InvoiceTemplate.is_active == is_active)
+                
+                # Get count
+                count_result = await session.execute(count_query)
+                total = len(count_result.scalars().all())
+                
+                # Apply pagination
+                query = query.offset(offset).limit(limit)
+                
+                # Get templates
+                result = await session.execute(query)
+                templates = result.scalars().all()
+                
+                return templates, total
+                
+        except Exception as e:
+            logger.error(f"❌ Error listing invoice templates: {str(e)}")
             return [], 0
 
 

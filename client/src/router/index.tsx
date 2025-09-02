@@ -5,12 +5,15 @@ import { Layout } from '../components/shared';
 // Import pages
 import { Dashboard } from '../pages/dashboard';
 import { InvoicesList, InvoiceTemplates, InvoiceScheduling } from '../pages/invoices';
+import InvoiceTemplatesList from '../pages/invoices/InvoiceTemplatesList';
+import InvoicePreviewDemo from '../pages/invoices/InvoicePreviewDemo';
 import { ContractsList } from '../pages/contracts';
 import { Login, Signup, EnterpriseSignup } from '../pages/auth';
 import BotsList from '../pages/bots/BotsList';
 import Marketplace from '../pages/marketplace/Marketplace';
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import Settings from '../pages/settings/Settings';
+import WorkflowTracker from '../pages/workflow/WorkflowTracker';
 
 export const router = createBrowserRouter([
   {
@@ -37,14 +40,26 @@ export const router = createBrowserRouter([
             element: <InvoiceTemplates />
           },
           {
+            path: 'templates-list',
+            element: <InvoiceTemplatesList />
+          },
+          {
             path: 'scheduling',
             element: <InvoiceScheduling />
+          },
+          {
+            path: 'preview-demo',
+            element: <InvoicePreviewDemo />
           }
         ]
       },
       {
         path: 'contracts',
         element: <ContractsList />
+      },
+      {
+        path: 'workflow/:workflowId',
+        element: <WorkflowTracker />
       },
       {
         path: 'bots',

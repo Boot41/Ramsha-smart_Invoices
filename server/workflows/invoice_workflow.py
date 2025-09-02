@@ -2,11 +2,13 @@ from typing import Dict, Any, Optional
 import logging
 from datetime import datetime
 import uuid
+import asyncio
 from schemas.workflow_schemas import WorkflowState, ProcessingStatus
 from agents.orchestrator_agent import OrchestratorAgent
 from agents.contract_processing_agent import ContractProcessingAgent
 from agents.validation_agent import ValidationAgent
 from agents.correction_agent import CorrectionAgent
+from agents.ui_invoice_generator_agent import UIInvoiceGeneratorAgent
 from services.contract_rag_service import get_contract_rag_service
 
 logger = logging.getLogger(__name__)
@@ -17,6 +19,7 @@ contract_rag_service = get_contract_rag_service()
 contract_processing_agent = ContractProcessingAgent()
 validation_agent = ValidationAgent()
 correction_agent = CorrectionAgent()
+ui_invoice_generator_agent = UIInvoiceGeneratorAgent()
 
 async def _orchestrator_node(state: WorkflowState) -> WorkflowState:
     """Orchestrator node - routes to appropriate agents"""
@@ -95,6 +98,10 @@ async def _quality_assurance_node(state: WorkflowState) -> WorkflowState:
     logger.info("✅ Quality assurance completed")
     return state
 
+async def _ui_invoice_generator_node(state: WorkflowState) -> WorkflowState:
+    """Generate professional invoice UI template using Gemini"""
+    return await ui_invoice_generator_agent.process(state)
+
 async def _storage_scheduling_node(state: WorkflowState) -> WorkflowState:
     """Store invoice and schedule future processing"""
     logger.info("💾 Storing invoice and scheduling...")
@@ -143,6 +150,8 @@ async def run_invoice_workflow(state: WorkflowState):
             state = await _invoice_generation_node(state)
         elif next_agent == "quality_assurance":
             state = await _quality_assurance_node(state)
+        elif next_agent == "ui_invoice_generator":
+            state = await _ui_invoice_generator_node(state)
         elif next_agent == "storage_scheduling":
             state = await _storage_scheduling_node(state)
         elif next_agent == "feedback_learning":

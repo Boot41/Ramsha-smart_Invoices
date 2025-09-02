@@ -21,6 +21,7 @@ class AgentType(str, Enum):
     INVOICE_GENERATION = "invoice_generation"
     QUALITY_ASSURANCE = "quality_assurance"
     STORAGE_SCHEDULING = "storage_scheduling"
+    UI_INVOICE_GENERATOR = "ui_invoice_generator"
     FEEDBACK_LEARNING = "feedback_learning"
     ERROR_RECOVERY = "error_recovery"
 
