@@ -1,50 +1,5 @@
-# Python
 __pycache__/
-*.pyc
-*.pyd
-*.pyo
-.Python/
-build/
-develop-eggs/
-dist/
-eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environment
 .venv/
-venv/
-env/
-*/.venv/
-*/venv/
-*/env/
-
-# IDEs and editors
-.vscode/
-.idea/
-*.sublime-project
-*.sublime-workspace
-
-# Environment variables
-.env
-.flaskenv
-
-# Logs
 logs/
-*.log
-
-# OS generated files
-.DS_Store
-.Trashes
-Thumbs.db
-
-# Specific to this project based on folder structure
-.claude/
+.env
+details/
