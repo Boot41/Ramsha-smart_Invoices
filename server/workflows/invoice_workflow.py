@@ -124,7 +124,10 @@ async def run_invoice_workflow(state: WorkflowState, orchestrator_service=None):
         state = await _orchestrator_node(state)
         next_agent = state.get("current_agent")
 
-        if next_agent == "contract_processing":
+        if next_agent in ("contract_processing", "enhanced_contract_processing"):
+            # Both the legacy contract_processing and the newer enhanced_contract_processing
+            # should execute the contract processing node. Prefer the existing agent implementation
+            # for now to keep behavior consistent.
             state = await _contract_processing_node(state)
         elif next_agent == "validation":
             state = await _validation_node(state)

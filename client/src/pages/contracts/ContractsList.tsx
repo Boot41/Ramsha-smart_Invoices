@@ -42,6 +42,7 @@ const ContractsList: React.FC = () => {
   const [workflowMessages, setWorkflowMessages] = useState<any[]>([]);
   const [workflowSocket, setWorkflowSocket] = useState<WebSocket | null>(null);
   const [workflowStatus, setWorkflowStatus] = useState<any>(null);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
   const [humanInputRequired, setHumanInputRequired] = useState<any | null>(null);
 
   // Enhanced WebSocket connection for workflow updates
@@ -72,7 +73,7 @@ const ContractsList: React.FC = () => {
             console.log('🚨 Human input required - setting up form...', message.data);
             setHumanInputRequired(message.data);
             setIsPaused(true);
-            setWorkflowStatus(prev => ({ ...prev, processing_status: 'needs_human_input' }));
+            setWorkflowStatus((prev: any) => ({ ...(prev || {}), processing_status: 'needs_human_input' }));
             break;
           
           case 'status_update':
@@ -243,10 +244,10 @@ const ContractsList: React.FC = () => {
         workflowSocket.send(JSON.stringify(message));
         console.log('✅ Human input submitted via WebSocket', message);
         
-        // Immediately update UI to show processing resuming
-        setHumanInputRequired(null);
-        setIsPaused(false);
-        setWorkflowStatus(prev => ({ ...prev, processing_status: 'processing' }));
+  // Immediately update UI to show processing resuming
+  setHumanInputRequired(null);
+  setIsPaused(false);
+  setWorkflowStatus((prev: any) => ({ ...(prev || {}), processing_status: 'processing' }));
         
       } else {
         // Fallback to HTTP API if WebSocket is not available
@@ -258,7 +259,7 @@ const ContractsList: React.FC = () => {
           // Update UI state
           setHumanInputRequired(null);
           setIsPaused(false);
-          setWorkflowStatus(prev => ({ ...prev, processing_status: 'processing' }));
+          setWorkflowStatus((prev: any) => ({ ...(prev || {}), processing_status: 'processing' }));
         }
       }
       

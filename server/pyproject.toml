@@ -44,6 +44,7 @@ dependencies = [
     "click>=8.1.8",
     # PDF generation
     "weasyprint>=66.0",
+    "word2number>=1.1",
 ]
 
 [project.optional-dependencies]

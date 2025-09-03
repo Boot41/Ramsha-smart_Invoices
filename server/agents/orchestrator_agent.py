@@ -3,6 +3,9 @@ import logging
 import asyncio
 from datetime import datetime
 from .base_agent import BaseAgent
+from services.enhanced_contract_agent import get_enhanced_contract_agent # Added this line
+
+# from .contract_processing_agent import ContractProcessingAgent # Commented out this line
 from schemas.workflow_schemas import WorkflowState, AgentType, ProcessingStatus
 from services.websocket_manager import get_websocket_manager
 
@@ -111,7 +114,7 @@ class OrchestratorAgent(BaseAgent):
             ProcessingStatus.IN_PROGRESS.value
         ]:
             return {
-                "next_action": "contract_processing",
+                "next_action": "enhanced_contract_processing", # Changed this line
                 "reason": "Starting workflow - contract needs processing",
                 "confidence": 0.9
             }
@@ -281,7 +284,7 @@ def route_from_orchestrator(state: WorkflowState) -> str:
         logger.info(f"🔧 Fallback routing decision: {next_action}")
     
     routing_map = {
-        "contract_processing": "contract_processing",
+        "enhanced_contract_processing": "enhanced_contract_processing", # Changed this line
         "validation": "validation", 
         "schedule_extraction": "schedule_extraction",
         "invoice_generation": "invoice_generation",
