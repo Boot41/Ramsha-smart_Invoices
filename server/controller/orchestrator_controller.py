@@ -184,6 +184,54 @@ class OrchestratorController:
         if len(request.user_id) > 100:
             raise ValueError("user_id cannot exceed 100 characters")
 
+    async def process_human_input(self, task_id: str, user_input: str) -> dict:
+        """
+        Process human input for a waiting workflow
+        
+        Args:
+            task_id: The task/workflow ID that is waiting for input
+            user_input: The input provided by the user
+            
+        Returns:
+            Dictionary with processing result
+        """
+        try:
+            self.logger.info(f"📥 Controller: Processing human input for task {task_id}")
+            
+            # Validate inputs
+            if not task_id or not task_id.strip():
+                raise ValueError("task_id is required and cannot be empty")
+                
+            if user_input is None:
+                user_input = ""  # Allow empty input
+            
+            # Process the input through service layer
+            success = await self.orchestrator_service.process_human_input(task_id, user_input)
+            
+            if not success:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Task {task_id} not found or not waiting for human input"
+                )
+            
+            self.logger.info(f"✅ Controller: Human input processed successfully for task {task_id}")
+            
+            return {
+                "task_id": task_id,
+                "status": "processed",
+                "message": "Human input processed successfully. Workflow resuming..."
+            }
+            
+        except ValueError as e:
+            self.logger.error(f"❌ Controller: Validation error: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Invalid request: {str(e)}")
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            self.logger.error(f"❌ Controller: Failed to process human input: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
 
 # Singleton controller instance
 _orchestrator_controller = None

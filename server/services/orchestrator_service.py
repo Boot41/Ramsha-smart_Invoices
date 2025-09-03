@@ -14,10 +14,17 @@ class OrchestratorService:
     """Service layer for orchestrating agentic invoice workflows"""
     
     def __init__(self):
-        self.workflow = create_invoice_workflow()
         self.active_workflows: Dict[str, Dict] = {}
         self.logger = logging.getLogger(__name__)
         self.websocket_manager = get_websocket_manager()
+        
+        # Human input management
+        self.human_input_events: Dict[str, asyncio.Event] = {}
+        self.human_input_data: Dict[str, Any] = {}
+        self.running_workflows: Dict[str, Dict[str, Any]] = {}
+        
+        # Initialize workflow with self reference for human input
+        self.workflow = create_invoice_workflow(orchestrator_service=self)
     
     async def start_invoice_workflow(self, request: WorkflowRequest, background_tasks) -> WorkflowResponse:
         """
@@ -49,6 +56,13 @@ class OrchestratorService:
                 "state": state,
                 "started_at": start_time,
                 "request": request.model_dump()
+            }
+            
+            # Store running workflow with user info
+            self.running_workflows[workflow_id] = {
+                "task": None,
+                "user_id": request.user_id,
+                "status": "STARTING"
             }
             
             # Execute the workflow in the background
@@ -87,12 +101,21 @@ class OrchestratorService:
         final_state = None
         try:
             self.logger.info(f"🔄 Executing workflow {workflow_id}")
+            
+            # Update running workflow status
+            if workflow_id in self.running_workflows:
+                self.running_workflows[workflow_id]["status"] = "IN_PROGRESS"
+                
             await self.websocket_manager.notify_workflow_status(workflow_id, "in_progress", "Workflow execution started.")
 
             final_state = await self.workflow(initial_state)
 
             self.active_workflows[workflow_id]["state"] = final_state
             self.active_workflows[workflow_id]["completed_at"] = datetime.now()
+
+            # Update running workflow status
+            if workflow_id in self.running_workflows:
+                self.running_workflows[workflow_id]["status"] = "COMPLETED"
 
             await self.websocket_manager.notify_workflow_completed(workflow_id, final_state)
             self.logger.info(f"✅ Workflow {workflow_id} completed.")
@@ -108,8 +131,165 @@ class OrchestratorService:
                     "timestamp": datetime.now().isoformat()
                 })
                 self.active_workflows[workflow_id]["state"] = error_state
+                
+                # Update running workflow status
+                if workflow_id in self.running_workflows:
+                    self.running_workflows[workflow_id]["status"] = "FAILED"
+                    
                 await self.websocket_manager.notify_workflow_failed(workflow_id, str(e), error_state)
+        finally:
+            # Clean up running workflow entry after completion
+            if workflow_id in self.running_workflows:
+                del self.running_workflows[workflow_id]
 
+    async def wait_for_human_input(self, task_id: str, prompt: str, user_id: str = None) -> str:
+        """
+        Pause the workflow and wait for human input via WebSocket
+        
+        Args:
+            task_id: Unique identifier for this input request (usually workflow_id)
+            prompt: The message/prompt to display to the user
+            user_id: Optional user ID to target specific user
+            
+        Returns:
+            The user input as a string
+        """
+        try:
+            self.logger.info(f"⏳ Waiting for human input for task: {task_id}")
+            
+            # Create an event for this task
+            event = asyncio.Event()
+            self.human_input_events[task_id] = event
+            
+            # Determine user_id if not provided
+            if not user_id and task_id in self.running_workflows:
+                user_id = self.running_workflows[task_id]["user_id"]
+            
+            # Update workflow status to waiting
+            if task_id in self.running_workflows:
+                self.running_workflows[task_id]["status"] = "WAITING_FOR_HUMAN_INPUT"
+            
+            # Update active workflows state if exists
+            if task_id in self.active_workflows:
+                self.active_workflows[task_id]["state"]["processing_status"] = "WAITING_FOR_HUMAN_INPUT"
+                self.active_workflows[task_id]["state"]["current_agent"] = "waiting_for_human_input"
+            
+            # Send WebSocket message requesting human input
+            message = {
+                "type": "human_input_required",
+                "task_id": task_id,
+                "prompt": prompt,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            await self.websocket_manager.notify_workflow_status(
+                task_id, 
+                "waiting_for_human_input", 
+                f"Human input required: {prompt}"
+            )
+            
+            # Send targeted message if user_id is available
+            if user_id:
+                try:
+                    await self.websocket_manager.send_to_user(user_id, message)
+                except Exception as e:
+                    self.logger.warning(f"Failed to send targeted message to user {user_id}: {e}")
+            
+            self.logger.info(f"📤 Sent human input request for task {task_id}")
+            
+            # Wait for the event to be set
+            await event.wait()
+            
+            # Retrieve the user input
+            user_input = self.human_input_data.get(task_id, "")
+            
+            # Clean up
+            if task_id in self.human_input_events:
+                del self.human_input_events[task_id]
+            if task_id in self.human_input_data:
+                del self.human_input_data[task_id]
+            
+            # Update workflow status back to in progress
+            if task_id in self.running_workflows:
+                self.running_workflows[task_id]["status"] = "IN_PROGRESS"
+            
+            if task_id in self.active_workflows:
+                self.active_workflows[task_id]["state"]["processing_status"] = ProcessingStatus.IN_PROGRESS.value
+            
+            self.logger.info(f"✅ Received human input for task {task_id}: {len(user_input)} characters")
+            
+            return user_input
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to wait for human input for task {task_id}: {str(e)}")
+            
+            # Clean up on error
+            if task_id in self.human_input_events:
+                del self.human_input_events[task_id]
+            if task_id in self.human_input_data:
+                del self.human_input_data[task_id]
+            
+            # Re-raise the exception
+            raise e
+
+    async def process_human_input(self, task_id: str, user_input: str) -> bool:
+        """
+        Process human input received from the frontend and resume the waiting workflow
+        
+        Args:
+            task_id: The task ID that was waiting for input (usually workflow_id)
+            user_input: The input provided by the user
+            
+        Returns:
+            True if input was processed successfully, False otherwise
+        """
+        try:
+            self.logger.info(f"📥 Processing human input for task: {task_id}")
+            
+            # Check if we have a waiting event for this task
+            if task_id not in self.human_input_events:
+                self.logger.warning(f"⚠️  No waiting event found for task {task_id}")
+                return False
+            
+            # Store the user input
+            self.human_input_data[task_id] = user_input
+            
+            # Set the event to unblock the waiting workflow
+            event = self.human_input_events[task_id]
+            event.set()
+            
+            # Get user_id for targeted notification
+            user_id = None
+            if task_id in self.running_workflows:
+                user_id = self.running_workflows[task_id]["user_id"]
+            
+            # Send confirmation via WebSocket
+            confirmation_message = {
+                "type": "human_input_received",
+                "task_id": task_id,
+                "message": "Input received. Workflow resuming...",
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            await self.websocket_manager.notify_workflow_status(
+                task_id, 
+                "in_progress", 
+                "Human input received. Workflow resuming..."
+            )
+            
+            # Send targeted confirmation if user_id is available
+            if user_id:
+                try:
+                    await self.websocket_manager.send_to_user(user_id, confirmation_message)
+                except Exception as e:
+                    self.logger.warning(f"Failed to send confirmation to user {user_id}: {e}")
+            
+            self.logger.info(f"✅ Human input processed successfully for task {task_id}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to process human input for task {task_id}: {str(e)}")
+            return False
     
     async def get_workflow_status(self, workflow_id: str) -> Optional[WorkflowStatus]:
         """Get the current status of a workflow"""

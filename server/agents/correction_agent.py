@@ -60,14 +60,9 @@ class CorrectionAgent(BaseAgent):
                 state=state
             )
             
-            # Save invoice to database
-            invoice_record = await self._save_invoice_to_database(corrected_invoice_json)
-            if invoice_record:
-                state["invoice_id"] = invoice_record.id
-                state["final_invoice"] = corrected_invoice_json  # Store for UI agent
-                self.logger.info(f"✅ Invoice saved to database with ID: {invoice_record.id}")
-            else:
-                self.logger.warning("⚠️ Failed to save invoice to database, but continuing with workflow")
+            # Store corrected invoice data for invoice_generator_agent to save
+            state["final_invoice"] = corrected_invoice_json  # Store for invoice_generator_agent
+            self.logger.info("✅ Invoice correction completed - data prepared for database save")
             
             # Store final invoice JSON in state
             state["final_invoice_json"] = corrected_invoice_json
@@ -389,11 +384,4 @@ class CorrectionAgent(BaseAgent):
         
         return invoice_json
     
-    async def _save_invoice_to_database(self, invoice_json: Dict[str, Any]) -> Optional[Any]:
-        """Save the corrected invoice to the database"""
-        try:
-            invoice_record = await self.db_service.create_invoice(invoice_json)
-            return invoice_record
-        except Exception as e:
-            self.logger.error(f"❌ Failed to save invoice to database: {str(e)}")
-            return None
+    # Invoice saving removed - now handled by invoice_generator_agent

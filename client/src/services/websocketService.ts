@@ -160,14 +160,81 @@ class WorkflowWebSocketService {
   }
   
   /**
-   * Submit human input for validation
+   * Submit human input for validation using HTTP endpoint
    */
-  submitHumanInput(fieldValues: Record<string, any>, userNotes: string = ''): void {
-    this.sendMessage('human_input_submission', {
-      field_values: fieldValues,
-      user_notes: userNotes,
-      action: 'resume_workflow'
-    });
+  async submitHumanInput(fieldValues: Record<string, any>, userNotes: string = ''): Promise<boolean> {
+    if (!this.workflowId) {
+      console.error('❌ No workflow ID available for human input submission');
+      return false;
+    }
+
+    try {
+      const API_BASE = process.env.NODE_ENV === 'development' 
+        ? 'http://localhost:8000' 
+        : window.location.origin;
+      
+      const response = await fetch(`${API_BASE}/api/v1/human-input/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          workflow_id: this.workflowId,
+          field_values: fieldValues,
+          user_notes: userNotes
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Human input submission failed:', errorText);
+        return false;
+      }
+
+      const result = await response.json();
+      console.log('✅ Human input submitted successfully:', result);
+      return true;
+      
+    } catch (error) {
+      console.error('❌ Error submitting human input:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Submit general human input for waiting workflows
+   * Uses the new HTTP endpoint for general human input
+   */
+  async submitGeneralHumanInput(taskId: string, userInput: string): Promise<boolean> {
+    try {
+      const API_BASE = process.env.NODE_ENV === 'development' 
+        ? 'http://localhost:8000' 
+        : window.location.origin;
+      
+      const response = await fetch(`${API_BASE}/api/v1/human-input/input`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          task_id: taskId,
+          user_input: userInput
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to submit human input');
+      }
+
+      const result = await response.json();
+      console.log('✅ General human input submitted successfully:', result);
+      return true;
+      
+    } catch (error) {
+      console.error('❌ Failed to submit general human input:', error);
+      throw error;
+    }
   }
 
   /**
@@ -233,6 +300,14 @@ class WorkflowWebSocketService {
         
       case 'human_input_processed':
         this.emit('input_processed', eventData);
+        break;
+        
+      case 'human_input_received':
+        this.emit('input_processed', eventData);
+        break;
+        
+      case 'waiting_for_human_input':
+        this.emit('workflow_waiting_input', eventData);
         break;
         
       case 'workflow_paused':

@@ -176,14 +176,6 @@ Your task is to analyze the provided contract text and extract ALL relevant info
   "start_date": "YYYY-MM-DD or null",
   "end_date": "YYYY-MM-DD or null",
   "effective_date": "YYYY-MM-DD or null",
-  "payment_terms": {{
-    "amount": decimal or string or null,
-    "currency": "USD|INR|EUR|GBP or null",
-    "frequency": "monthly|quarterly|biannually|annually|one_time|custom or string",
-    "due_days": number or null,
-    "late_fee": decimal or null,
-    "discount_terms": "string or null"
-  }},
   "services": [
     {{
       "description": "string",

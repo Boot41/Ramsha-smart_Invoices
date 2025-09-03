@@ -1,13 +1,17 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Upload, FileText, Zap, Settings, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Upload, FileText, Zap, AlertCircle } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
-import { workflowAPI, WorkflowResponse } from '../../services/workflowService';
-import { workflowWebSocket, WorkflowEvent } from '../../services/websocketService';
+import { workflowAPI } from '../../services/workflowService';
+import { workflowWebSocket } from '../../services/websocketService';
+import type { WorkflowResponse } from '../../services/workflowService';
+import type { WorkflowEvent } from '../../services/websocketService';
 import WorkflowStatusTracker from '../../components/workflow/WorkflowStatusTracker';
 import HumanInputForm from '../../components/workflow/HumanInputForm';
+import GeneralHumanInputForm from '../../components/workflow/GeneralHumanInputForm';
+import ExtractedInvoiceData from '../../components/workflow/ExtractedInvoiceData';
 
 interface FileUpload {
   file: File;
@@ -30,12 +34,17 @@ const WorkflowProcessor: React.FC = () => {
   const [workflowEvents, setWorkflowEvents] = useState<WorkflowEvent[]>([]);
   const [showHumanInput, setShowHumanInput] = useState(false);
   const [humanInputRequest, setHumanInputRequest] = useState<any>(null);
+  const [showGeneralInput, setShowGeneralInput] = useState(false);
+  const [generalInputRequest, setGeneralInputRequest] = useState<any>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [pauseReason, setPauseReason] = useState<string>('');
   
   // WebSocket connection state
   const [wsConnected, setWsConnected] = useState(false);
   const [wsError, setWsError] = useState<string | null>(null);
+  
+  // Invoice data state
+  const [extractedInvoiceData, setExtractedInvoiceData] = useState<any>(null);
 
   // File handling
   const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -165,19 +174,38 @@ const WorkflowProcessor: React.FC = () => {
       setWorkflowStatus(event.data);
       setWorkflowEvents(prev => [...prev, event]);
       
-      // Update processing messages based on current agent
+      // Capture invoice data if present in status update
+      if (event.data.final_invoice_data) {
+        setExtractedInvoiceData(event.data.final_invoice_data);
+      } else if (event.data.invoice_data) {
+        setExtractedInvoiceData(event.data.invoice_data);
+      }
+      
+      // Update processing messages based on current agent or status
       if (event.data.current_agent) {
         const agentMessages = {
           'orchestrator': '🎯 Orchestrating workflow...',
           'contract_processing': '📄 Processing contract document...',
           'validation': '🔍 Validating extracted data...',
           'correction': '✏️ Applying corrections...',
-          'ui_invoice_generator': '🎨 Generating invoice template...'
+          'ui_invoice_generator': '🎨 Generating invoice template...',
+          'waiting_for_human_input': '⏳ Waiting for your input...'
         };
         
-        const message = event.data.message || agentMessages[event.data.current_agent] || `Processing with ${event.data.current_agent}...`;
+        const message = event.data.message || agentMessages[event.data.current_agent as keyof typeof agentMessages] || `Processing with ${event.data.current_agent}...`;
         setProcessingMessage(message);
-        setProcessingStep(event.data.current_agent.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()));
+        setProcessingStep(event.data.current_agent.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()));
+      }
+      
+      // Handle waiting for human input status
+      if (event.data.processing_status === 'WAITING_FOR_HUMAN_INPUT' || event.data.current_agent === 'waiting_for_human_input') {
+        if (!showGeneralInput && !showHumanInput) {
+          // This might be a direct status update - trigger the general input if no specific validation input is shown
+          setIsPaused(true);
+          setPauseReason('Waiting for your input');
+          setProcessingMessage('⏸️ Workflow paused for input');
+          setProcessingStep('Awaiting Input');
+        }
       }
     };
 
@@ -192,10 +220,27 @@ const WorkflowProcessor: React.FC = () => {
       setWorkflowEvents(prev => [...prev, event]);
     };
 
+    const handleWorkflowWaitingInput = (event: WorkflowEvent) => {
+      console.log('⏳ Workflow waiting for general input:', event.data);
+      setGeneralInputRequest({
+        taskId: event.data.task_id || currentWorkflow?.workflow_id,
+        prompt: event.data.prompt || 'Please provide input to continue the workflow',
+        timestamp: event.data.timestamp || event.timestamp
+      });
+      setShowGeneralInput(true);
+      setIsPaused(true);
+      setPauseReason('Waiting for your input');
+      setProcessingMessage('⏸️ Waiting for your response');
+      setProcessingStep('Awaiting Input');
+      setWorkflowEvents(prev => [...prev, event]);
+    };
+
     const handleInputProcessed = (event: WorkflowEvent) => {
       console.log('✅ Input processed:', event.data);
       setShowHumanInput(false);
       setHumanInputRequest(null);
+      setShowGeneralInput(false);
+      setGeneralInputRequest(null);
       setIsPaused(false);
       setPauseReason('');
       setProcessingMessage('▶️ Resuming workflow...');
@@ -223,6 +268,13 @@ const WorkflowProcessor: React.FC = () => {
       setProcessingMessage('🎉 Workflow completed successfully!');
       setProcessingStep('Completed');
       setWorkflowEvents(prev => [...prev, event]);
+      
+      // Extract final invoice data if available
+      if (event.data.final_response?.invoice_data) {
+        setExtractedInvoiceData(event.data.final_response.invoice_data);
+      } else if (event.data.invoice_data) {
+        setExtractedInvoiceData(event.data.invoice_data);
+      }
     };
 
     const handleError = (event: WorkflowEvent) => {
@@ -248,6 +300,7 @@ const WorkflowProcessor: React.FC = () => {
     // Register event listeners
     workflowWebSocket.on('status_update', handleStatusUpdate);
     workflowWebSocket.on('human_input_needed', handleHumanInputNeeded);
+    workflowWebSocket.on('workflow_waiting_input', handleWorkflowWaitingInput);
     workflowWebSocket.on('input_processed', handleInputProcessed);
     workflowWebSocket.on('workflow_paused', handleWorkflowPaused);
     workflowWebSocket.on('workflow_resumed', handleWorkflowResumed);
@@ -260,6 +313,7 @@ const WorkflowProcessor: React.FC = () => {
       // Cleanup event listeners
       workflowWebSocket.off('status_update', handleStatusUpdate);
       workflowWebSocket.off('human_input_needed', handleHumanInputNeeded);
+      workflowWebSocket.off('workflow_waiting_input', handleWorkflowWaitingInput);
       workflowWebSocket.off('input_processed', handleInputProcessed);
       workflowWebSocket.off('workflow_paused', handleWorkflowPaused);
       workflowWebSocket.off('workflow_resumed', handleWorkflowResumed);
@@ -277,12 +331,30 @@ const WorkflowProcessor: React.FC = () => {
     };
   }, []);
 
+  // Handle general human input submission
+  const handleGeneralInputSubmit = async (taskId: string, userInput: string) => {
+    try {
+      console.log('📤 Submitting general human input:', { taskId, userInput: userInput.substring(0, 50) + '...' });
+      await workflowWebSocket.submitGeneralHumanInput(taskId, userInput);
+      
+      // Don't immediately close the form - wait for the backend confirmation
+      setProcessingMessage('📤 Submitting your response...');
+      setProcessingStep('Processing Input');
+      
+    } catch (error) {
+      console.error('❌ Failed to submit general human input:', error);
+      throw error; // Let the component handle the error display
+    }
+  };
+
   const resetWorkflow = () => {
     setCurrentWorkflow(null);
     setWorkflowStatus(null);
     setWorkflowEvents([]);
     setShowHumanInput(false);
     setHumanInputRequest(null);
+    setShowGeneralInput(false);
+    setGeneralInputRequest(null);
     setSelectedFile(null);
     setContractName('');
     setUploadError(null);
@@ -291,6 +363,7 @@ const WorkflowProcessor: React.FC = () => {
     setProcessingStep('');
     setIsPaused(false);
     setPauseReason('');
+    setExtractedInvoiceData(null);
     workflowWebSocket.disconnect();
     setWsConnected(false);
     setWsError(null);
@@ -470,7 +543,9 @@ const WorkflowProcessor: React.FC = () => {
                     
                     {/* Progress hint */}
                     <div className="text-xs text-blue-500 mt-1 opacity-70">
-                      {isPaused ? '⏸️ Waiting for input' : '🔄 Agents are working...'}
+                      {showGeneralInput ? '💬 Please provide your input below' : 
+                       isPaused ? '⏸️ Waiting for input' : 
+                       '🔄 Agents are working...'}
                     </div>
                   </div>
                 </div>
@@ -491,7 +566,7 @@ const WorkflowProcessor: React.FC = () => {
                   </Badge>
                   {isPaused && (
                     <Badge variant="warning">
-                      ⏸️ Paused
+                      {showGeneralInput ? '💬 Awaiting Input' : '⏸️ Paused'}
                     </Badge>
                   )}
                 </div>
@@ -551,14 +626,47 @@ const WorkflowProcessor: React.FC = () => {
             />
           )}
 
-          {/* Human Input Form */}
+          {/* Extracted Invoice Data */}
+          {extractedInvoiceData && (
+            <ExtractedInvoiceData
+              invoiceData={extractedInvoiceData}
+              workflowStatus={workflowStatus}
+            />
+          )}
+
+          {/* Human Input Forms */}
           {showHumanInput && humanInputRequest && (
             <HumanInputForm
               request={humanInputRequest}
-              onSubmit={(fieldValues, userNotes) => {
-                workflowWebSocket.submitHumanInput(fieldValues, userNotes);
+              onSubmit={async (fieldValues, userNotes) => {
+                try {
+                  console.log('📤 Submitting human input:', { fieldValues, userNotes });
+                  const success = await workflowWebSocket.submitHumanInput(fieldValues, userNotes);
+                  
+                  if (success) {
+                    setProcessingMessage('📤 Submitting your corrections...');
+                    setProcessingStep('Processing Input');
+                    // Don't immediately close the form - wait for backend confirmation
+                  } else {
+                    throw new Error('Failed to submit human input');
+                  }
+                } catch (error) {
+                  console.error('❌ Failed to submit human input:', error);
+                  throw error; // Let the HumanInputForm handle the error display
+                }
               }}
               onCancel={() => setShowHumanInput(false)}
+            />
+          )}
+
+          {/* General Human Input Form */}
+          {showGeneralInput && generalInputRequest && (
+            <GeneralHumanInputForm
+              taskId={generalInputRequest.taskId}
+              prompt={generalInputRequest.prompt}
+              timestamp={generalInputRequest.timestamp}
+              onSubmit={handleGeneralInputSubmit}
+              onCancel={() => setShowGeneralInput(false)}
             />
           )}
 

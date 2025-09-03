@@ -139,39 +139,31 @@ class OrchestratorAgent(BaseAgent):
         # Correction completed → invoice generation
         if (state.get("correction_completed") and 
             state.get("final_invoice_json") and
-            not state.get("invoice_data")):
+            not state.get("invoice_created")):
             return {
                 "next_action": "invoice_generation",
-                "reason": "Correction completed - generating invoice data",
+                "reason": "Correction completed - creating invoice record in database",
                 "confidence": 0.9
             }
         
-        # Invoice generated → quality assurance
-        if (state.get("invoice_data") and 
+        # Invoice created → quality assurance
+        if (state.get("invoice_created") and 
+            state.get("invoice_id") and
             not state.get("quality_score")):
             return {
                 "next_action": "quality_assurance",
-                "reason": "Invoice generated - quality check required",
+                "reason": "Invoice created - quality check required",
                 "confidence": 0.8
             }
         
-        # Quality passed → UI invoice generator
+        # Invoice created and quality checked → complete workflow
         if (state.get("quality_score") and 
-            state.get("invoice_data") and
-            not state.get("ui_invoice_template")):
-            return {
-                "next_action": "ui_invoice_generator",
-                "reason": "Quality check passed - generating professional UI template",
-                "confidence": 0.9
-            }
-        
-        # UI template generated → complete
-        if (state.get("ui_invoice_template") and 
-            state.get("invoice_data")):
+            state.get("invoice_created") and
+            state.get("invoice_id")):
             state["workflow_completed"] = True
             return {
                 "next_action": "complete_success", 
-                "reason": "UI template generated - workflow completed successfully",
+                "reason": "Invoice created and quality checked - workflow completed successfully",
                 "confidence": 0.95
             }
         

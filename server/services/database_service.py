@@ -1,6 +1,7 @@
 from typing import Optional, Dict, Any, List, Tuple
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 import logging
+import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, and_, or_
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -14,6 +15,17 @@ from schemas.auth_schemas import (
 from schemas.address_schemas import AddressCreate, AddressUpdate
 
 logger = logging.getLogger(__name__)
+
+def serialize_dates_for_json(obj):
+    """Recursively serialize date objects to ISO format strings for JSON storage"""
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    elif isinstance(obj, dict):
+        return {key: serialize_dates_for_json(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [serialize_dates_for_json(item) for item in obj]
+    else:
+        return obj
 
 
 class DatabaseService:
@@ -442,18 +454,18 @@ class DatabaseService:
                 client = parties.get("client", {})
                 provider = parties.get("service_provider", {})
                 payment_info = invoice_data.get("payment_information", {})
-                totals = invoice_data.get("totals", {})
+                totals = invoice_data.get("totals", {}) or invoice_data.get("financial_details", {})
                 contract_details = invoice_data.get("contract_details", {})
-                metadata = invoice_data.get("metadata", {})
+                metadata = invoice_data.get("metadata", {}) or invoice_data.get("processing_metadata", {})
                 
                 # Parse dates
                 invoice_date = datetime.fromisoformat(header.get("invoice_date", datetime.now().isoformat()))
                 due_date = datetime.fromisoformat(header.get("due_date", datetime.now().isoformat()))
                 
                 invoice = Invoice(
-                    invoice_number=header.get("invoice_id", ""),
+                    invoice_number=header.get("invoice_number", header.get("invoice_id", "")),
                     workflow_id=header.get("workflow_id", ""),
-                    user_id=metadata.get("user_id"),
+                    user_id=metadata.get("user_id") or invoice_data.get("processing_metadata", {}).get("user_id"),
                     invoice_date=invoice_date,
                     due_date=due_date,
                     status=InvoiceStatus.GENERATED,
@@ -481,8 +493,8 @@ class DatabaseService:
                     contract_type=contract_details.get("contract_type"),
                     contract_reference=header.get("contract_reference"),
                     
-                    # Complete invoice data
-                    invoice_data=invoice_data,
+                    # Complete invoice data - serialize dates for JSON storage
+                    invoice_data=serialize_dates_for_json(invoice_data),
                     
                     # AI metadata
                     generated_by_agent="correction_agent",

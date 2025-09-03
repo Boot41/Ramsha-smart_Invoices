@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 from pydantic import BaseModel, Field
 from services.orchestrator_service import get_orchestrator_service
+from controller.orchestrator_controller import get_orchestrator_controller
 from agents.validation_agent import ValidationAgent
 import logging
 
@@ -22,6 +23,54 @@ class HumanInputResponse(BaseModel):
     validation_status: str
     updated_fields: Dict[str, Any]
     remaining_issues: int = 0
+
+class GeneralHumanInputRequest(BaseModel):
+    """Request model for general human input to waiting workflows"""
+    task_id: str = Field(..., description="Task/Workflow ID that is waiting for input")
+    user_input: str = Field(..., description="User input text")
+
+class GeneralHumanInputResponse(BaseModel):
+    """Response after processing general human input"""
+    success: bool
+    message: str
+    task_id: str
+    status: str
+
+@router.post("/input", response_model=GeneralHumanInputResponse)
+async def submit_general_human_input(request: GeneralHumanInputRequest):
+    """
+    Submit general human input to resume a waiting workflow
+    
+    This endpoint allows users to provide input when a workflow is paused
+    waiting for human interaction using the new asyncio.Event-based system.
+    """
+    try:
+        logger.info(f"📥 Receiving general human input for task {request.task_id}")
+        
+        # Get orchestrator controller
+        orchestrator_controller = get_orchestrator_controller()
+        
+        # Process the human input
+        result = await orchestrator_controller.process_human_input(
+            request.task_id, 
+            request.user_input
+        )
+        
+        return GeneralHumanInputResponse(
+            success=True,
+            message=result["message"],
+            task_id=result["task_id"],
+            status=result["status"]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to process general human input for task {request.task_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process human input: {str(e)}"
+        )
 
 @router.post("/submit", response_model=HumanInputResponse)
 async def submit_human_input(request: HumanInputRequest):

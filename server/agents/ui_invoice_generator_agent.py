@@ -85,13 +85,16 @@ class UIInvoiceGeneratorAgent(BaseAgent):
                 })
             
             # Store generated component info in state
-            state["ui_invoice_component"] = {
+            state["ui_invoice_template"] = {
                 "component_name": component_data["component_name"],
                 "file_path": component_file_path,
                 "component_type": component_data["component_type"],
                 "generated_at": datetime.now().isoformat(),
                 "model_used": "gemini-2.0-flash"
             }
+            
+            # Also keep the old key for backward compatibility
+            state["ui_invoice_component"] = state["ui_invoice_template"]
             
             # Update state metrics
             state["processing_status"] = ProcessingStatus.SUCCESS.value
