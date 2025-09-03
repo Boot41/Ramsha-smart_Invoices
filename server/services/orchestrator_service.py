@@ -6,7 +6,6 @@ import uuid
 from schemas.workflow_schemas import WorkflowRequest, WorkflowResponse, WorkflowStatus, ProcessingStatus
 from workflows.invoice_workflow import create_invoice_workflow, initialize_workflow_state
 
-from services.websocket_manager import get_websocket_manager
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +15,6 @@ class OrchestratorService:
     def __init__(self):
         self.active_workflows: Dict[str, Dict] = {}
         self.logger = logging.getLogger(__name__)
-        self.websocket_manager = get_websocket_manager()
         
         # Human input management
         self.human_input_events: Dict[str, asyncio.Event] = {}
@@ -55,8 +53,11 @@ class OrchestratorService:
             self.active_workflows[workflow_id] = {
                 "state": state,
                 "started_at": start_time,
-                "request": request.model_dump()
+                "request": request.model_dump(),
+                "last_accessed": datetime.now()
             }
+            
+            self.logger.info(f"✅ Stored workflow {workflow_id} in active workflows. Total active: {len(self.active_workflows)}")
             
             # Store running workflow with user info
             self.running_workflows[workflow_id] = {
@@ -72,7 +73,7 @@ class OrchestratorService:
             response = WorkflowResponse(
                 workflow_id=workflow_id,
                 status=ProcessingStatus.IN_PROGRESS,
-                message="Workflow started. Connect to WebSocket for real-time updates.",
+                message="Workflow started. Check status via HTTP polling.",
                 result=None,
                 errors=[],
                 quality_score=0.0,
@@ -97,7 +98,7 @@ class OrchestratorService:
             )
     
     async def _execute_workflow(self, workflow_id: str, initial_state: Dict[str, Any]):
-        """Execute the invoice workflow and notify via WebSocket"""
+        """Execute the invoice workflow"""
         final_state = None
         try:
             self.logger.info(f"🔄 Executing workflow {workflow_id}")
@@ -106,19 +107,27 @@ class OrchestratorService:
             if workflow_id in self.running_workflows:
                 self.running_workflows[workflow_id]["status"] = "IN_PROGRESS"
                 
-            await self.websocket_manager.notify_workflow_status(workflow_id, "in_progress", "Workflow execution started.")
+            self.logger.info(f'🚀 Workflow execution started for workflow {workflow_id}')
 
             final_state = await self.workflow(initial_state)
 
             self.active_workflows[workflow_id]["state"] = final_state
-            self.active_workflows[workflow_id]["completed_at"] = datetime.now()
-
-            # Update running workflow status
-            if workflow_id in self.running_workflows:
-                self.running_workflows[workflow_id]["status"] = "COMPLETED"
-
-            await self.websocket_manager.notify_workflow_completed(workflow_id, final_state)
-            self.logger.info(f"✅ Workflow {workflow_id} completed.")
+            
+            # Only mark as completed if workflow is actually complete (not paused)
+            if final_state.get("processing_status") == "PAUSED_FOR_HUMAN_INPUT":
+                # Workflow is paused for human input - don't mark as completed
+                if workflow_id in self.running_workflows:
+                    self.running_workflows[workflow_id]["status"] = "PAUSED_FOR_HUMAN_INPUT"
+                self.logger.info(f'⏸️ Workflow {workflow_id} paused for human input validation')
+                # Protect this workflow from cleanup
+                self.ensure_workflow_persists(workflow_id)
+            else:
+                # Workflow actually completed
+                self.active_workflows[workflow_id]["completed_at"] = datetime.now()
+                if workflow_id in self.running_workflows:
+                    self.running_workflows[workflow_id]["status"] = "COMPLETED"
+                self.logger.info(f'✅ Workflow completed successfully for workflow {workflow_id}')
+                self.logger.info(f"✅ Workflow {workflow_id} completed.")
 
         except Exception as e:
             self.logger.error(f"❌ Workflow execution failed for {workflow_id}: {str(e)}")
@@ -136,15 +145,17 @@ class OrchestratorService:
                 if workflow_id in self.running_workflows:
                     self.running_workflows[workflow_id]["status"] = "FAILED"
                     
-                await self.websocket_manager.notify_workflow_failed(workflow_id, str(e), error_state)
+                self.logger.error(f'❌ Workflow failed for workflow {workflow_id}: {str(e)}')
         finally:
-            # Clean up running workflow entry after completion
+            # Clean up running workflow entry only if workflow is actually completed (not paused)
             if workflow_id in self.running_workflows:
-                del self.running_workflows[workflow_id]
+                # Don't delete if workflow is paused for human input
+                if (final_state and final_state.get("processing_status") != "PAUSED_FOR_HUMAN_INPUT"):
+                    del self.running_workflows[workflow_id]
 
     async def wait_for_human_input(self, task_id: str, prompt: str, user_id: str = None) -> str:
         """
-        Pause the workflow and wait for human input via WebSocket
+        Pause the workflow and wait for human input via HTTP
         
         Args:
             task_id: Unique identifier for this input request (usually workflow_id)
@@ -174,7 +185,7 @@ class OrchestratorService:
                 self.active_workflows[task_id]["state"]["processing_status"] = "WAITING_FOR_HUMAN_INPUT"
                 self.active_workflows[task_id]["state"]["current_agent"] = "waiting_for_human_input"
             
-            # Send WebSocket message requesting human input
+            # Log human input request
             message = {
                 "type": "human_input_required",
                 "task_id": task_id,
@@ -182,16 +193,12 @@ class OrchestratorService:
                 "timestamp": datetime.now().isoformat()
             }
             
-            await self.websocket_manager.notify_workflow_status(
-                task_id, 
-                "waiting_for_human_input", 
-                f"Human input required: {prompt}"
-            )
+            self.logger.info(f'🙅 Human input required for task {task_id}: {prompt}')
             
             # Send targeted message if user_id is available
             if user_id:
                 try:
-                    await self.websocket_manager.send_to_user(user_id, message)
+                    self.logger.info(f'📨 Message would be sent to user {user_id}: {message}')
                 except Exception as e:
                     self.logger.warning(f"Failed to send targeted message to user {user_id}: {e}")
             
@@ -263,7 +270,7 @@ class OrchestratorService:
             if task_id in self.running_workflows:
                 user_id = self.running_workflows[task_id]["user_id"]
             
-            # Send confirmation via WebSocket
+            # Log confirmation
             confirmation_message = {
                 "type": "human_input_received",
                 "task_id": task_id,
@@ -271,16 +278,12 @@ class OrchestratorService:
                 "timestamp": datetime.now().isoformat()
             }
             
-            await self.websocket_manager.notify_workflow_status(
-                task_id, 
-                "in_progress", 
-                "Human input received. Workflow resuming..."
-            )
+            self.logger.info(f'📝 Human input received for task {task_id}. Workflow resuming...')
             
             # Send targeted confirmation if user_id is available
             if user_id:
                 try:
-                    await self.websocket_manager.send_to_user(user_id, confirmation_message)
+                    self.logger.info(f'✅ Confirmation would be sent to user {user_id}: {confirmation_message}')
                 except Exception as e:
                     self.logger.warning(f"Failed to send confirmation to user {user_id}: {e}")
             
@@ -430,18 +433,38 @@ class OrchestratorService:
             workflows_to_remove = []
             
             for workflow_id, workflow_info in self.active_workflows.items():
+                state = workflow_info.get("state", {})
                 completed_at = workflow_info.get("completed_at")
-                if completed_at and completed_at < cutoff_time:
+                processing_status = state.get("processing_status")
+                
+                # Only remove workflows that are truly completed AND old
+                # Never remove workflows paused for human input
+                if (completed_at and completed_at < cutoff_time and 
+                    processing_status not in ["PAUSED_FOR_HUMAN_INPUT", "IN_PROGRESS"]):
                     workflows_to_remove.append(workflow_id)
+                    self.logger.info(f"🗑️ Marking workflow {workflow_id} for cleanup (status: {processing_status})")
             
             for workflow_id in workflows_to_remove:
                 del self.active_workflows[workflow_id]
+                # Also clean up from running_workflows if present
+                if workflow_id in self.running_workflows:
+                    del self.running_workflows[workflow_id]
             
             if workflows_to_remove:
                 self.logger.info(f"🧹 Cleaned up {len(workflows_to_remove)} old workflows")
+            else:
+                self.logger.info(f"🔍 No workflows to cleanup. Active: {len(self.active_workflows)}, Running: {len(self.running_workflows)}")
             
         except Exception as e:
             self.logger.error(f"❌ Failed to cleanup workflows: {str(e)}")
+    
+    def ensure_workflow_persists(self, workflow_id: str):
+        """Ensure a workflow persists and doesn't get cleaned up"""
+        if workflow_id in self.active_workflows:
+            self.active_workflows[workflow_id]["last_accessed"] = datetime.now()
+            self.active_workflows[workflow_id]["protected"] = True
+            self.logger.info(f"🔒 Protected workflow {workflow_id} from cleanup")
+    
 
 
 # Singleton instance

@@ -4,8 +4,8 @@
  */
 
 const API_BASE_URL = process.env.NODE_ENV === 'development' 
-  ? 'http://localhost:8000/api/orchestrator'
-  : '/api/orchestrator';
+  ? 'http://localhost:8000/api/v1/orchestrator'
+  : '/api/v1/orchestrator';
 
 export interface WorkflowRequest {
   user_id: string;
@@ -52,8 +52,8 @@ export interface ActiveWorkflow {
 
 class WorkflowAPIService {
   private async getAuthHeaders(): Promise<HeadersInit> {
-    // Get JWT token from localStorage (adjust based on your auth implementation)
-    const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
+    // Get JWT token from localStorage using the correct key
+    const token = localStorage.getItem('authToken');
     return {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -61,7 +61,7 @@ class WorkflowAPIService {
   }
 
   private async getFormDataHeaders(): Promise<HeadersInit> {
-    const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
+    const token = localStorage.getItem('authToken');
     return {
       // Don't set Content-Type for FormData - browser will set it with boundary
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -281,21 +281,39 @@ class WorkflowAPIService {
   }
 
   /**
-   * Get current user ID (implement based on your auth system)
+   * Get current user ID from localStorage or JWT token
    */
   getCurrentUserId(): string {
-    // Implement based on your authentication system
-    // This is a placeholder - adjust according to your auth implementation
+    // First try to get from stored userId
+    const storedUserId = localStorage.getItem('userId');
+    if (storedUserId && storedUserId !== 'current_user') {
+      return storedUserId;
+    }
+
+    // Try to get from stored user object
     const userStr = localStorage.getItem('user');
     if (userStr) {
       try {
         const user = JSON.parse(userStr);
         return user.id || user.user_id || user.email;
       } catch {
-        // Fallback
+        // Continue to JWT token method
       }
     }
-    return 'current_user';
+
+    // Try to extract from JWT token
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        return payload.sub || payload.user_id || payload.id || payload.email;
+      } catch {
+        // JWT parsing failed
+      }
+    }
+
+    // If all else fails, throw an error instead of returning a non-existent user
+    throw new Error('Unable to determine current user ID. Please log in again.');
   }
 }
 

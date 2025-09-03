@@ -1,12 +1,10 @@
 from typing import Dict, Any, Optional
 import logging
-import asyncio
 from datetime import datetime
 from .base_agent import BaseAgent
 from schemas.workflow_schemas import WorkflowState, AgentType, ProcessingStatus
 from schemas.contract_schemas import ContractInvoiceData
 from services.validation_service import get_validation_service, ValidationResult
-from services.websocket_manager import get_websocket_manager
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +14,6 @@ class ValidationAgent(BaseAgent):
     def __init__(self):
         super().__init__(AgentType.VALIDATION)
         self.validation_service = get_validation_service()
-        self.websocket_manager = get_websocket_manager()
     
     async def process(self, state: WorkflowState) -> WorkflowState:
         """
@@ -72,13 +69,10 @@ class ValidationAgent(BaseAgent):
                         await self._handle_human_input_requirement_realtime(state, validation_result, user_id, contract_name)
                     else:
                         state["processing_status"] = ProcessingStatus.SUCCESS.value
-                        # Notify success via WebSocket
+                        # Log validation success
                         workflow_id = state.get('workflow_id')
                         if workflow_id:
-                            await self.websocket_manager.notify_workflow_status(
-                                workflow_id, 'validation_passed',
-                                'Raw data validation completed successfully'
-                            )
+                            self.logger.info(f'✅ Raw data validation passed for workflow {workflow_id}')
                     return state
             else:
                 invoice_data_obj = structured_invoice_data
@@ -103,13 +97,10 @@ class ValidationAgent(BaseAgent):
                 state["processing_status"] = ProcessingStatus.SUCCESS.value
                 self.logger.info("✅ Validation passed - proceeding to next step")
                 
-                # Notify WebSocket clients of success
+                # Log validation success
                 workflow_id = state.get('workflow_id')
                 if workflow_id:
-                    await self.websocket_manager.notify_workflow_status(
-                        workflow_id, 'validation_passed', 
-                        'Validation completed successfully'
-                    )
+                    self.logger.info(f'✅ Validation completed successfully for workflow {workflow_id}')
             
             return state
             
@@ -256,7 +247,7 @@ class ValidationAgent(BaseAgent):
         )
     
     async def _handle_human_input_requirement_realtime(self, state: WorkflowState, validation_result: ValidationResult, user_id: str, contract_name: str):
-        """Handle cases where human input is required via WebSocket"""
+        """Handle cases where human input is required via HTTP"""
         
         workflow_id = state.get('workflow_id')
         self.logger.info(f"🙋 Human input required for {contract_name} - workflow {workflow_id}")
@@ -297,36 +288,22 @@ class ValidationAgent(BaseAgent):
         
         self.logger.info(f"📋 Human input request created - Priority: {human_input_request.get('priority')}")
         
-        # If WebSocket connections are available, set up for real-time input but don't block
-        if workflow_id and self.websocket_manager.has_active_connections(workflow_id):
-            self.logger.info(f"🔄 Setting up real-time human input via WebSocket...")
+        # Set up for manual human input handling - workflow will pause here
+        if workflow_id:
+            self.logger.info(f"⏸️ Pausing workflow for manual human input validation...")
             
-            # Store the state for when human input arrives
-            state["awaiting_human_input_websocket"] = True
+            # Store the state and pause workflow
+            state["awaiting_human_input"] = True
+            state["processing_status"] = "PAUSED_FOR_HUMAN_INPUT"
+            state["workflow_paused"] = True
+            state["pause_reason"] = "validation_requires_human_input"
             
-            self.logger.info(f"✅ Set awaiting_human_input_websocket = True for workflow {workflow_id}")
+            # Protect workflow from cleanup
+            from services.orchestrator_service import get_orchestrator_service
+            orchestrator_service = get_orchestrator_service()
+            orchestrator_service.ensure_workflow_persists(workflow_id)
             
-            # Send WebSocket notification to trigger human input form
-            await self.websocket_manager.broadcast_workflow_event(
-                workflow_id, 
-                'human_input_required',
-                {
-                    'message': f'Human input required for {contract_name}',
-                    'instructions': human_input_request.get('instructions', 'Please review and correct the extracted data.'),
-                    'fields': human_input_request.get('fields', []),
-                    'context': human_input_request.get('context', {}),
-                    'validation_errors': [issue.message for issue in validation_result.issues if issue.requires_human_input],
-                    'confidence_scores': {field.field_name: field.confidence_score for field in validation_result.missing_required_fields if hasattr(field, 'confidence_score')}
-                }
-            )
-            self.logger.info(f"📡 Sent human_input_required WebSocket event to {workflow_id}")
-            
-            # The WebSocket handler will call submit_human_input when data arrives
-            # This will trigger re-processing through the orchestrator
-            
-        else:
-            self.logger.info(f"🔌 No WebSocket connections - using traditional HTTP flow")
-            # No WebSocket connections, use traditional HTTP flow
+            self.logger.info(f"📝 Human input required for {contract_name}. Use GET /api/v1/validation/requirements/{workflow_id} to see what needs correction.")
     
     async def handle_human_input_response(self, state: WorkflowState, human_input_data: Dict[str, Any]) -> WorkflowState:
         """
@@ -494,3 +471,5 @@ class ValidationAgent(BaseAgent):
             return True
         except:
             return False
+    
+    

@@ -78,6 +78,7 @@ class AuthMiddleware:
 
 
 async def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     token: Optional[str] = Query(None, alias="token")
 ) -> Dict[str, Any]:
@@ -87,8 +88,13 @@ async def get_current_user(
     Returns:
         Dict containing user information from JWT payload
     """
-    # TEMPORARY BYPASS FOR WEBSOCKET DEBUGGING
-    logger.warning("⚠️ get_current_user BYPASSED for WebSocket debugging. DO NOT USE IN PRODUCTION.")
+    # Check for internal service calls
+    if request.headers.get("X-Internal-Service") == "true":
+        logger.info("🔧 Internal service call detected - bypassing auth")
+        return {"user_id": "internal_service", "email": "internal@service.local", "role": "service", "is_admin": True}
+    
+    # TEMPORARY BYPASS FOR DEVELOPMENT
+    logger.warning("⚠️ get_current_user BYPASSED for development. DO NOT USE IN PRODUCTION.")
     return {"user_id": "debug_user", "email": "debug@example.com", "role": "admin", "is_admin": True}
 
     # Original logic (commented out for bypass)

@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime
 from .base_agent import BaseAgent
 from schemas.workflow_schemas import WorkflowState, AgentType, ProcessingStatus
-from services.websocket_manager import get_websocket_manager
+from services.internal_http_client import get_internal_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,6 @@ class OrchestratorAgent(BaseAgent):
     def __init__(self):
         super().__init__(AgentType.ORCHESTRATOR)
         self.decision_rules = self._initialize_decision_rules()
-        self.websocket_manager = get_websocket_manager()
     
     async def process(self, state: WorkflowState) -> WorkflowState:
         """Main orchestrator logic - routes to appropriate agents"""
@@ -36,12 +35,8 @@ class OrchestratorAgent(BaseAgent):
         # Store decision in state for workflow routing
         state["orchestrator_decision"] = decision
         
-        # Broadcast agent transition
-        await self.websocket_manager.notify_agent_transition(
-            state["workflow_id"],
-            from_agent=from_agent,
-            to_agent=decision["next_action"]
-        )
+        # Log agent transition
+        self.logger.info(f'🔄 Agent transition: {from_agent} -> {decision["next_action"]} for workflow {state["workflow_id"]}')
         
         return state
     
@@ -95,6 +90,14 @@ class OrchestratorAgent(BaseAgent):
                 "next_action": "contract_processing",
                 "reason": f"Retrying after error recovery (attempt {state['attempt_count'] + 1})",
                 "confidence": 0.6
+            }
+        
+        # Paused for human input - workflow should pause here
+        if state["processing_status"] == "PAUSED_FOR_HUMAN_INPUT":
+            return {
+                "next_action": "paused_for_validation",
+                "reason": "Workflow paused for human input validation - waiting for corrections",
+                "confidence": 1.0
             }
         
         # Failed
@@ -172,7 +175,7 @@ class OrchestratorAgent(BaseAgent):
             state["validation_results"].get("human_input_required")):
             
             workflow_id = state.get("workflow_id")
-            if workflow_id and self.websocket_manager.has_active_connections(workflow_id):
+            if workflow_id:
                 if state.get("awaiting_websocket_connection"):
                     state["awaiting_websocket_connection"] = False
                     state["workflow_completed"] = False

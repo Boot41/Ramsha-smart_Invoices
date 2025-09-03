@@ -173,10 +173,13 @@ class WorkflowWebSocketService {
         ? 'http://localhost:8000' 
         : window.location.origin;
       
+      const token = localStorage.getItem('authToken');
+      
       const response = await fetch(`${API_BASE}/api/v1/human-input/submit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
           workflow_id: this.workflowId,
@@ -211,10 +214,13 @@ class WorkflowWebSocketService {
         ? 'http://localhost:8000' 
         : window.location.origin;
       
+      const token = localStorage.getItem('authToken');
+      
       const response = await fetch(`${API_BASE}/api/v1/human-input/input`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
           task_id: taskId,
@@ -276,6 +282,8 @@ class WorkflowWebSocketService {
     const eventType = message.event_type || message.type || 'unknown';
     const eventData = message.data || message;
     
+    console.log('🔍 WebSocket message received:', { eventType, eventData, fullMessage: message });
+    
     // Special handling for different event types
     switch (eventType) {
       case 'workflow_status':
@@ -291,6 +299,7 @@ class WorkflowWebSocketService {
         break;
         
       case 'human_input_required':
+        console.log('🙋 Emitting human_input_needed event with data:', eventData);
         this.emit('human_input_needed', eventData);
         break;
         

@@ -1,13 +1,13 @@
 from typing import Dict, Any, Optional
 import logging
 import asyncio
-from datetime import datetime, date
+from datetime import datetime, timedelta
 from decimal import Decimal
 from .base_agent import BaseAgent
 from schemas.workflow_schemas import WorkflowState, AgentType, ProcessingStatus
 from schemas.contract_schemas import ContractInvoiceData
-from services.websocket_manager import get_websocket_manager
 from services.database_service import get_database_service
+from services.internal_http_client import get_internal_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,6 @@ class CorrectionAgent(BaseAgent):
     
     def __init__(self):
         super().__init__(AgentType.CORRECTION)
-        self.websocket_manager = get_websocket_manager()
         self.db_service = get_database_service()
     
     async def process(self, state: WorkflowState) -> WorkflowState:
@@ -40,12 +39,9 @@ class CorrectionAgent(BaseAgent):
         workflow_id = state.get('workflow_id')
         self.logger.info(f"🔧 Starting correction processing for workflow_id: {workflow_id}")
         
-        # Notify WebSocket clients that correction is starting
+        # Log that correction is starting
         if workflow_id:
-            await self.websocket_manager.broadcast_workflow_event(workflow_id, 'agent_started', {
-                'agent': 'correction',
-                'message': 'Starting invoice correction and JSON generation'
-            })
+            self.logger.info(f'🔧 Starting invoice correction and JSON generation for workflow {workflow_id}')
         
         try:
             # Extract invoice data from state
@@ -77,14 +73,9 @@ class CorrectionAgent(BaseAgent):
                 quality_score=corrected_invoice_json.get("metadata", {}).get("quality_score", 0.85)
             )
             
-            # Notify WebSocket clients of successful correction
+            # Log successful correction
             if workflow_id:
-                await self.websocket_manager.broadcast_workflow_event(workflow_id, 'correction_completed', {
-                    'message': 'Invoice correction and JSON generation completed successfully',
-                    'invoice_data': corrected_invoice_json,
-                    'confidence_score': corrected_invoice_json.get("metadata", {}).get("confidence_score"),
-                    'quality_score': corrected_invoice_json.get("metadata", {}).get("quality_score")
-                })
+                self.logger.info(f'✅ Invoice correction and JSON generation completed successfully for workflow {workflow_id}')
             
             self.logger.info(f"✅ Correction completed successfully for workflow {workflow_id}")
             return state
@@ -104,12 +95,9 @@ class CorrectionAgent(BaseAgent):
                 "timestamp": datetime.now().isoformat()
             })
             
-            # Notify WebSocket clients of failure
+            # Log failure
             if workflow_id:
-                await self.websocket_manager.broadcast_workflow_event(workflow_id, 'correction_failed', {
-                    'message': f'Invoice correction failed: {str(e)}',
-                    'error': str(e)
-                })
+                self.logger.error(f'❌ Invoice correction failed for workflow {workflow_id}: {str(e)}')
             
             return state
     
@@ -260,7 +248,7 @@ class CorrectionAgent(BaseAgent):
     
     def _calculate_due_date(self, invoice_data: Dict[str, Any]) -> str:
         """Calculate invoice due date based on payment terms"""
-        from datetime import timedelta
+    
         
         due_days = invoice_data.get("payment_terms", {}).get("due_days", 30)
         try:
@@ -383,5 +371,3 @@ class CorrectionAgent(BaseAgent):
         }
         
         return invoice_json
-    
-    # Invoice saving removed - now handled by invoice_generator_agent

@@ -5,7 +5,6 @@ from datetime import datetime
 from .base_agent import BaseAgent
 from schemas.workflow_schemas import WorkflowState, AgentType, ProcessingStatus
 from models.llm.base import get_model
-from services.websocket_manager import get_websocket_manager
 from services.database_service import get_database_service
 
 logger = logging.getLogger(__name__)
@@ -16,7 +15,6 @@ class UIInvoiceGeneratorAgent(BaseAgent):
     def __init__(self):
         super().__init__(AgentType.UI_INVOICE_GENERATOR)
         self.model = get_model("gemini-2.0-flash", temperature=0.1, max_output_tokens=8000)
-        self.websocket_manager = get_websocket_manager()
         self.db_service = get_database_service()
         # Path to client components directory
         self.client_components_path = os.path.join(os.path.dirname(__file__), "../../client/src/components/invoices")
@@ -34,20 +32,14 @@ class UIInvoiceGeneratorAgent(BaseAgent):
         workflow_id = state.get('workflow_id')
         self.logger.info(f"🎨 Starting UI invoice generation for workflow_id: {workflow_id}")
         
-        # Notify WebSocket clients that UI generation is starting
+        # Log that UI generation is starting
         if workflow_id:
-            await self.websocket_manager.broadcast_workflow_event(workflow_id, 'agent_started', {
-                'agent': 'ui_invoice_generator',
-                'message': 'Starting professional invoice template generation with Gemini-2.0-flash'
-            })
+            self.logger.info(f'🎨 Starting professional invoice template generation with Gemini-2.0-flash for workflow {workflow_id}')
         
         try:
-            # Notify that we're extracting invoice data
+            # Log that we're extracting invoice data
             if workflow_id:
-                await self.websocket_manager.broadcast_workflow_event(workflow_id, 'ui_generation_progress', {
-                    'step': 'data_extraction',
-                    'message': 'Extracting invoice data for template generation'
-                })
+                self.logger.info(f'🔄 Extracting invoice data for template generation - workflow {workflow_id}')
             
             # Try to retrieve invoice from database first
             invoice_data = await self._retrieve_invoice_from_database(state)
@@ -59,12 +51,9 @@ class UIInvoiceGeneratorAgent(BaseAgent):
             if not invoice_data:
                 raise ValueError("No invoice data found for UI generation")
             
-            # Notify that we're calling Gemini API
+            # Log that we're calling Gemini API
             if workflow_id:
-                await self.websocket_manager.broadcast_workflow_event(workflow_id, 'ui_generation_progress', {
-                    'step': 'gemini_generation',
-                    'message': 'Generating professional React invoice component with Gemini-2.0-flash AI model'
-                })
+                self.logger.info(f'🤖 Generating professional React invoice component with Gemini-2.0-flash AI model - workflow {workflow_id}')
             
             # Generate React component using Gemini
             component_data = await self._generate_invoice_component(invoice_data, state)
@@ -75,14 +64,9 @@ class UIInvoiceGeneratorAgent(BaseAgent):
             # Save template info to database
             template_saved = await self._save_template_to_database(state, component_data, component_file_path)
             
-            # Notify component generation completion
+            # Log component generation completion
             if workflow_id:
-                await self.websocket_manager.broadcast_workflow_event(workflow_id, 'ui_generation_progress', {
-                    'step': 'component_completed',
-                    'message': 'Professional React invoice component generated successfully',
-                    'component_name': component_data.get("component_name", "InvoiceTemplate"),
-                    'file_path': component_file_path
-                })
+                self.logger.info(f'✅ Professional React invoice component generated successfully - workflow {workflow_id}')
             
             # Store generated component info in state
             state["ui_invoice_template"] = {
@@ -100,14 +84,9 @@ class UIInvoiceGeneratorAgent(BaseAgent):
             state["processing_status"] = ProcessingStatus.SUCCESS.value
             self.update_state_metrics(state, confidence=0.95, quality_score=0.9)
             
-            # Notify completion
+            # Log completion
             if workflow_id:
-                await self.websocket_manager.broadcast_workflow_event(workflow_id, 'agent_completed', {
-                    'agent': 'ui_invoice_generator',
-                    'message': 'React invoice component generation completed successfully',
-                    'component_ready': True,
-                    'component_path': component_file_path
-                })
+                self.logger.info(f'✅ React invoice component generation completed successfully - workflow {workflow_id}')
             
             self.logger.info("✅ React invoice component generated successfully")
             return state
@@ -115,13 +94,9 @@ class UIInvoiceGeneratorAgent(BaseAgent):
         except Exception as e:
             self.logger.error(f"❌ UI invoice generation failed: {str(e)}")
             
-            # Notify error via WebSocket
+            # Log error
             if workflow_id:
-                await self.websocket_manager.broadcast_workflow_event(workflow_id, 'agent_error', {
-                    'agent': 'ui_invoice_generator',
-                    'message': f'React component generation failed: {str(e)}',
-                    'error_type': 'component_generation_error'
-                })
+                self.logger.error(f'❌ React component generation failed for workflow {workflow_id}: {str(e)}')
             
             state["processing_status"] = ProcessingStatus.FAILED.value
             

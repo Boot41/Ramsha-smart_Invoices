@@ -8,7 +8,8 @@ import {
   Store,
   Users,
   Settings,
-  ChevronDown
+  ChevronDown,
+  Zap
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -52,6 +53,12 @@ const menuItems: MenuItemType[] = [
     label: 'Contracts',
     icon: FileSignature,
     path: '/contracts'
+  },
+  {
+    id: 'workflow',
+    label: 'Agentic Workflow',
+    icon: Zap,
+    path: '/workflow'
   },
   {
     id: 'marketplace',

@@ -44,7 +44,7 @@ async def _contract_processing_node(state: WorkflowState) -> WorkflowState:
     return await contract_processing_agent.execute(state)
 
 async def _validation_node(state: WorkflowState) -> WorkflowState:
-    """Node that executes the Validation Agent with WebSocket integration."""
+    """Node that executes the Validation Agent."""
     return await validation_agent.process(state)
 
 async def _correction_node(state: WorkflowState) -> WorkflowState:
@@ -145,6 +145,19 @@ async def run_invoice_workflow(state: WorkflowState, orchestrator_service=None):
         elif next_agent == "error_recovery":
             state = await _error_recovery_node(state)
             break # End of workflow
+        elif next_agent == "paused_for_validation" or next_agent == "waiting_for_human_input" or state.get("processing_status") == "PAUSED_FOR_HUMAN_INPUT":
+            # Workflow is paused for manual human input - break and wait for resume
+            logger.info(f"⏸️ Workflow {state.get('workflow_id')} is paused for human input validation")
+            logger.info(f"📋 Use GET /api/v1/validation/requirements/{state.get('workflow_id')} to see what needs correction")
+            logger.info(f"▶️ Use POST /api/v1/validation/resume to continue with corrections")
+            
+            # Ensure the processing status is correctly set for the orchestrator service
+            state["processing_status"] = "PAUSED_FOR_HUMAN_INPUT"
+            state["workflow_paused"] = True
+            state["awaiting_human_input"] = True
+            state["pause_reason"] = "validation_required"
+            state["last_updated_at"] = datetime.now().isoformat()
+            break
         elif next_agent == "waiting_for_human_input":
             if orchestrator_service:
                 # Use the new wait_for_human_input method
@@ -183,7 +196,7 @@ async def run_invoice_workflow(state: WorkflowState, orchestrator_service=None):
             else:
                 # Fallback to old behavior
                 logger.warning("⚠️ No orchestrator service available, using legacy wait method")
-                logger.info("⏳ Waiting for human input via WebSocket...")
+                logger.info("⏳ Waiting for human input via HTTP....")
                 # Sleep briefly to avoid busy loop, then re-evaluate
                 await asyncio.sleep(0.1)
         elif next_agent in ["complete_success", "complete_with_errors", "__end__"]:

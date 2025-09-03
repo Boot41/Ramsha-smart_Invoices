@@ -6,7 +6,6 @@ from .base_agent import BaseAgent
 from schemas.workflow_schemas import WorkflowState, AgentType, ProcessingStatus
 from services.contract_processor import get_contract_processor, ContractProcessor
 from services.contract_rag_service import get_contract_rag_service, ContractRAGService
-from services.websocket_manager import get_websocket_manager
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +16,6 @@ class ContractProcessingAgent(BaseAgent):
         super().__init__(AgentType.CONTRACT_PROCESSING)
         self.contract_processor: ContractProcessor = get_contract_processor()
         self.rag_service: ContractRAGService = get_contract_rag_service()
-        self.websocket_manager = get_websocket_manager()
 
     async def process(self, state: WorkflowState) -> WorkflowState:
         """
@@ -36,7 +34,7 @@ class ContractProcessingAgent(BaseAgent):
         # Check if we're in evaluation mode (text content) or normal mode (PDF bytes)
         is_evaluation_mode = isinstance(contract_file, str) and not contract_file.endswith('.pdf')
         
-        await self.websocket_manager.notify_workflow_status(workflow_id, "in_progress", "Step 1: Processing and embedding contract...")
+        self.logger.info(f'📄 Step 1: Processing and embedding contract for workflow {workflow_id}')
         if is_evaluation_mode:
             # For evaluation: skip PDF processing, use text directly
             self.logger.info("🧪 Evaluation mode detected - processing text content directly")
@@ -59,7 +57,7 @@ class ContractProcessingAgent(BaseAgent):
             self.logger.info(f"✅ Contract processing and embedding complete. Result: {processing_result.get('message')}")
 
         # Step 2: Use the RAG service to extract structured invoice data.
-        await self.websocket_manager.notify_workflow_status(workflow_id, "in_progress", "Step 2: Extracting structured data using RAG service...")
+        self.logger.info(f'🔍 Step 2: Extracting structured data using RAG service for workflow {workflow_id}')
         self.logger.info("Step 2: Extracting structured data using RAG service...")
         try:
             # Add small delay to allow Pinecone indexing to complete
@@ -104,7 +102,7 @@ class ContractProcessingAgent(BaseAgent):
                 raise e
 
         # Step 3: Update the workflow state with the results.
-        await self.websocket_manager.notify_workflow_status(workflow_id, "in_progress", "Step 3: Updating workflow state with results...")
+        self.logger.info(f'✅ Step 3: Updating workflow state with results for workflow {workflow_id}')
         state["contract_data"] = rag_response.invoice_data.model_dump()
         state["contract_data"]["raw_rag_response"] = rag_response.raw_response
         

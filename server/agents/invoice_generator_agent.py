@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from .base_agent import BaseAgent
 from schemas.workflow_schemas import WorkflowState, AgentType, ProcessingStatus
 from services.database_service import get_database_service
-from services.websocket_manager import get_websocket_manager
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -15,7 +14,6 @@ class InvoiceGeneratorAgent(BaseAgent):
     def __init__(self):
         super().__init__(AgentType.INVOICE_GENERATION)
         self.db_service = get_database_service()
-        self.websocket_manager = get_websocket_manager()
     
     async def process(self, state: WorkflowState) -> WorkflowState:
         """
@@ -116,11 +114,17 @@ class InvoiceGeneratorAgent(BaseAgent):
                     "generated_by_agent": "invoice_generator",
                     "confidence_score": state.get("confidence_level", 0.8),
                     "quality_score": state.get("quality_score", 0.8),
-                    "human_reviewed": state.get("human_input_applied", False),
-                    "validation_passed": state.get("validation_results", {}).get("is_valid", False),
+                    "human_reviewed": state.get("human_input_completed", False) or bool(invoice_data.get("human_corrected")) if isinstance(invoice_data, dict) else False,
+                    "validation_passed": state.get("validation_results", {}).get("is_valid", True if state.get("human_input_completed") else False),
                     "created_timestamp": datetime.now().isoformat(),
                     "workflow_id": workflow_id,
-                    "original_invoice_data": invoice_data
+                    "original_data_summary": {
+                        "data_source": type(invoice_data).__name__ if invoice_data else "None",
+                        "fields_extracted": len(invoice_data.keys()) if isinstance(invoice_data, dict) else 0,
+                        "has_payment_info": bool(invoice_data.get("payment_terms") or invoice_data.get("payment_amount")) if isinstance(invoice_data, dict) else False,
+                        "has_parties_info": bool(invoice_data.get("client") or invoice_data.get("service_provider")) if isinstance(invoice_data, dict) else False,
+                        "extraction_timestamp": datetime.now().isoformat()
+                    }
                 }
             }
             
@@ -138,19 +142,8 @@ class InvoiceGeneratorAgent(BaseAgent):
                 # Update processing status
                 state["processing_status"] = ProcessingStatus.SUCCESS.value
                 
-                # Notify WebSocket clients with complete invoice data
-                if workflow_id:
-                    await self.websocket_manager.broadcast_workflow_event(workflow_id, 'invoice_created', {
-                        'agent': 'invoice_generator',
-                        'message': f'Invoice {invoice_record.invoice_number} created successfully',
-                        'invoice_id': invoice_record.id,
-                        'invoice_uuid': invoice_uuid,
-                        'invoice_number': invoice_record.invoice_number,
-                        'contract_uuid': contract_uuid,
-                        'total_amount': float(financial_info["total_amount"]),
-                        'currency': financial_info.get("currency", "USD"),
-                        'invoice_data': final_invoice_data  # Include full invoice data
-                    })
+                # Log invoice creation success
+                self.logger.info(f'✅ Invoice created successfully for workflow {workflow_id}: {invoice_record.invoice_number}')
                 
                 self.logger.info(f"✅ Invoice created successfully: {invoice_record.invoice_number} (UUID: {invoice_uuid}, DB ID: {invoice_record.id})")
                 return state
@@ -160,13 +153,8 @@ class InvoiceGeneratorAgent(BaseAgent):
         except Exception as e:
             self.logger.error(f"❌ Invoice creation failed: {str(e)}")
             
-            # Notify error via WebSocket
-            if workflow_id:
-                await self.websocket_manager.broadcast_workflow_event(workflow_id, 'agent_error', {
-                    'agent': 'invoice_generator',
-                    'message': f'Invoice creation failed: {str(e)}',
-                    'error_type': 'invoice_creation_error'
-                })
+            # Log invoice creation error
+            self.logger.error(f'❌ Invoice creation failed for workflow {workflow_id}: {str(e)}')
             
             state["processing_status"] = ProcessingStatus.FAILED.value
             
@@ -189,7 +177,20 @@ class InvoiceGeneratorAgent(BaseAgent):
         
         # Try invoice_data from validation or RAG
         if state.get("invoice_data"):
-            return state["invoice_data"]
+            invoice_data = state["invoice_data"]
+            
+            # Check if it has nested structure from validation endpoint
+            if isinstance(invoice_data, dict) and "invoice_response" in invoice_data:
+                nested_data = invoice_data["invoice_response"].get("invoice_data", {})
+                # If nested data has been human-corrected, use it
+                if isinstance(nested_data, dict) and nested_data.get("human_corrected"):
+                    return nested_data
+                # Otherwise, try to extract from the nested structure
+                elif isinstance(nested_data, dict) and len(nested_data) > 0:
+                    return nested_data
+            
+            # Return original invoice_data if no nested structure
+            return invoice_data
         
         # Try contract data as fallback
         if state.get("contract_data"):

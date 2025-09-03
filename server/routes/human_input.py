@@ -5,6 +5,7 @@ from services.orchestrator_service import get_orchestrator_service
 from controller.orchestrator_controller import get_orchestrator_controller
 from agents.validation_agent import ValidationAgent
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/human-input", tags=["human-input"])
@@ -86,21 +87,31 @@ async def submit_human_input(request: HumanInputRequest):
         # Get orchestrator service to access workflow state
         orchestrator_service = get_orchestrator_service()
         
+        # Debug: Log current active workflows
+        active_workflow_ids = list(orchestrator_service.active_workflows.keys())
+        logger.info(f"🔍 Current active workflows: {active_workflow_ids}")
+        logger.info(f"🎯 Looking for workflow: {request.workflow_id}")
+        
         # Get workflow from active workflows
         workflow_info = orchestrator_service.active_workflows.get(request.workflow_id)
         if not workflow_info:
+            logger.error(f"❌ Workflow {request.workflow_id} not found in active workflows. Available: {active_workflow_ids}")
             raise HTTPException(
                 status_code=404,
-                detail=f"Workflow {request.workflow_id} not found or has expired"
+                detail=f"Workflow {request.workflow_id} not found or has expired. Available workflows: {len(active_workflow_ids)}"
             )
+        
+        # Update last accessed time to prevent cleanup
+        workflow_info["last_accessed"] = datetime.now()
         
         workflow_state = workflow_info["state"]
         
         # Check if workflow is actually waiting for human input
-        if workflow_state.get("processing_status") != "needs_human_input":
+        current_status = workflow_state.get("processing_status")
+        if current_status not in ["needs_human_input", "WAITING_FOR_HUMAN_INPUT"]:
             raise HTTPException(
                 status_code=400,
-                detail=f"Workflow {request.workflow_id} is not waiting for human input. Current status: {workflow_state.get('processing_status')}"
+                detail=f"Workflow {request.workflow_id} is not waiting for human input. Current status: {current_status}"
             )
         
         # Validate that we have the required human input request data
@@ -134,7 +145,7 @@ async def submit_human_input(request: HumanInputRequest):
         if processing_status == "success":
             validation_status = "resolved"
             message = "✅ Human input successfully resolved all validation issues. Workflow will continue."
-        elif processing_status == "needs_human_input":
+        elif processing_status in ["needs_human_input", "WAITING_FOR_HUMAN_INPUT"]:
             validation_status = "partial_resolution" 
             remaining_issues = len([issue for issue in validation_results.get("issues", []) if issue.get("requires_human_input")])
             message = f"⚠️ Some validation issues remain. {remaining_issues} issues still require attention."
@@ -255,4 +266,122 @@ async def get_validation_status(workflow_id: str):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to get validation status: {str(e)}"
+        )
+
+@router.get("/debug/active-workflows")
+async def debug_active_workflows():
+    """
+    Debug endpoint to list all currently active workflows
+    """
+    try:
+        orchestrator_service = get_orchestrator_service()
+        
+        active_workflows = {}
+        for workflow_id, workflow_info in orchestrator_service.active_workflows.items():
+            state = workflow_info.get("state", {})
+            active_workflows[workflow_id] = {
+                "processing_status": state.get("processing_status"),
+                "current_agent": state.get("current_agent"),
+                "awaiting_human_input": state.get("awaiting_human_input"),
+                "user_id": state.get("user_id"),
+                "contract_name": state.get("contract_name"),
+                "last_updated": state.get("last_updated_at")
+            }
+        
+        return {
+            "total_active_workflows": len(active_workflows),
+            "workflows": active_workflows,
+            "running_workflows": list(orchestrator_service.running_workflows.keys())
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to get active workflows: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get active workflows: {str(e)}"
+        )
+
+@router.post("/debug/create-test-workflow")
+async def create_test_workflow_for_human_input():
+    """
+    Create a test workflow that requires human input for debugging
+    """
+    try:
+        from services.orchestrator_service import get_orchestrator_service
+        from schemas.workflow_schemas import WorkflowRequest
+        from datetime import datetime
+        import uuid
+        
+        orchestrator_service = get_orchestrator_service()
+        workflow_id = str(uuid.uuid4())
+        
+        # Create a test workflow state that needs human input
+        test_state = {
+            "workflow_id": workflow_id,
+            "user_id": "test_user",
+            "contract_name": "Test Contract for Human Input",
+            "processing_status": "needs_human_input",
+            "awaiting_human_input": True,
+            "current_agent": "validation",
+            "last_updated_at": datetime.now().isoformat(),
+            "human_input_request": {
+                "instructions": "Please review and correct the test data",
+                "fields": [
+                    {
+                        "name": "client_name",
+                        "label": "Client Name",
+                        "type": "string",
+                        "value": "Test Client",
+                        "required": True
+                    },
+                    {
+                        "name": "payment_amount",
+                        "label": "Payment Amount",
+                        "type": "number",
+                        "value": None,
+                        "required": True
+                    }
+                ],
+                "context": {"test": True}
+            },
+            "validation_results": {
+                "is_valid": False,
+                "human_input_required": True,
+                "issues": [
+                    {"field": "payment_amount", "message": "Missing payment amount", "requires_human_input": True}
+                ]
+            }
+        }
+        
+        # Store in active workflows
+        orchestrator_service.active_workflows[workflow_id] = {
+            "state": test_state,
+            "started_at": datetime.now(),
+            "last_accessed": datetime.now(),
+            "protected": True,
+            "request": {"test_workflow": True}
+        }
+        
+        logger.info(f"🧪 Created test workflow {workflow_id} for human input testing")
+        
+        return {
+            "success": True,
+            "workflow_id": workflow_id,
+            "message": "Test workflow created and ready for human input",
+            "instructions": "Use POST /api/v1/human-input/submit with this workflow_id",
+            "sample_payload": {
+                "workflow_id": workflow_id,
+                "field_values": {
+                    "client_name": "Corrected Client Name",
+                    "payment_amount": 1500.00
+                },
+                "user_notes": "Test human input"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to create test workflow: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create test workflow: {str(e)}"
         )

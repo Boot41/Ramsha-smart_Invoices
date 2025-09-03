@@ -14,6 +14,7 @@ import Marketplace from '../pages/marketplace/Marketplace';
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import Settings from '../pages/settings/Settings';
 import WorkflowTracker from '../pages/workflow/WorkflowTracker';
+import InteractiveWorkflow from '../pages/workflow/InteractiveWorkflow';
 
 export const router = createBrowserRouter([
   {
@@ -58,8 +59,17 @@ export const router = createBrowserRouter([
         element: <ContractsList />
       },
       {
-        path: 'workflow/:workflowId',
-        element: <WorkflowTracker />
+        path: 'workflow',
+        children: [
+          {
+            index: true,
+            element: <InteractiveWorkflow />
+          },
+          {
+            path: ':workflowId',
+            element: <WorkflowTracker />
+          }
+        ]
       },
       {
         path: 'bots',

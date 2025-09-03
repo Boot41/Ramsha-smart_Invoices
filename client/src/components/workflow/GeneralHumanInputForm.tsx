@@ -29,16 +29,17 @@ const GeneralHumanInputForm: React.FC<GeneralHumanInputProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!userInput.trim()) {
-      setError('Please provide some input before submitting');
-      return;
-    }
+    // Allow empty input for testing - workflow can handle it
+    // if (!userInput.trim()) {
+    //   setError('Please provide some input before submitting');
+    //   return;
+    // }
     
     setIsLoading(true);
     setError(null);
     
     try {
-      await onSubmit(taskId, userInput.trim());
+      await onSubmit(taskId, userInput.trim() || 'Continue processing'); // Provide default if empty
       setUserInput(''); // Clear input after successful submission
     } catch (error) {
       console.error('Failed to submit human input:', error);
@@ -164,7 +165,7 @@ const GeneralHumanInputForm: React.FC<GeneralHumanInputProps> = ({
         <div className="flex space-x-3 pt-2">
           <Button
             type="submit"
-            disabled={!userInput.trim() || isActuallySubmitting}
+            disabled={isActuallySubmitting}
             className="flex-1"
           >
             {isActuallySubmitting ? (
