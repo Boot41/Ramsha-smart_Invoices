@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional, List
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, date
 from .base_agent import BaseAgent
 from schemas.workflow_schemas import WorkflowState, AgentType, ProcessingStatus
 from models.llm.base import get_model
@@ -43,11 +43,15 @@ class InvoiceDesignAgent(BaseAgent):
             if not designs or not designs.get("designs"):
                 raise ValueError("Failed to generate invoice designs")
             
-            # Store designs in database and state
-            await self._save_designs_to_database(state, designs)
+            # Generate actual HTML invoices with embedded data
+            html_invoices = await self.generate_html_invoices(designs, invoice_data)
             
-            # Store designs in state
+            # Store designs and HTML invoices in database and state
+            await self._save_designs_to_database(state, designs, html_invoices)
+            
+            # Store designs and HTML invoices in state
             state["invoice_designs"] = designs
+            state["html_invoices"] = html_invoices
             state["design_generation_completed"] = True
             state["design_generation_timestamp"] = datetime.now().isoformat()
             
@@ -126,7 +130,7 @@ Each UI definition in the array must follow the established JSON structure and h
 2. Design 2: Name it "Classic & Professional". Use a more traditional layout, perhaps with a serif font and a formal structure.
 3. Design 3: Name it "Bold & Creative". Use a strong brand color, unique typography, and a more unconventional layout.
 
-Here is the invoice data: {json.dumps(contract_data, indent=2)}
+Here is the invoice data: {json.dumps(contract_data, indent=2, default=self._json_serializer)}
 
 CRITICAL REQUIREMENTS:
 - Return ONLY valid JSON, no additional text or markdown
@@ -327,7 +331,278 @@ Return only the JSON object, no additional text."""
         self.logger.error("No invoice data found in database or state")
         return None
     
-    async def _save_designs_to_database(self, state: WorkflowState, designs: Dict[str, Any]) -> bool:
+    async def generate_html_invoices(self, designs: Dict[str, Any], invoice_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Generate complete HTML invoices with embedded data from the design specifications
+        
+        Args:
+            designs: The UI design specifications
+            invoice_data: The actual invoice data to embed
+            
+        Returns:
+            List of HTML invoice strings with embedded data
+        """
+        try:
+            html_invoices = []
+            
+            # Extract actual data from invoice_data
+            actual_data = self._extract_actual_invoice_data(invoice_data)
+            
+            for design in designs.get("designs", []):
+                try:
+                    # Generate HTML for this design
+                    html_content = await self._generate_html_from_design(design, actual_data)
+                    
+                    html_invoices.append({
+                        "design_name": design.get("design_name", "Unknown Design"),
+                        "design_id": design.get("design_id", "unknown"),
+                        "html_content": html_content,
+                        "generated_at": datetime.now().isoformat()
+                    })
+                    
+                    self.logger.info(f"✅ Generated HTML invoice for design: {design.get('design_name')}")
+                    
+                except Exception as e:
+                    self.logger.error(f"❌ Failed to generate HTML for design {design.get('design_name')}: {str(e)}")
+                    continue
+            
+            self.logger.info(f"✅ Generated {len(html_invoices)} HTML invoices")
+            return html_invoices
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error generating HTML invoices: {str(e)}")
+            return []
+
+    async def _generate_html_from_design(self, design: Dict[str, Any], actual_data: Dict[str, Any]) -> str:
+        """Generate complete HTML from design specification with actual data"""
+        
+        design_name = design.get("design_name", "Invoice")
+        components = design.get("components", [])
+        
+        # Create HTML structure
+        html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{design_name} - {actual_data.get('invoice_number', 'Invoice')}</title>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }}
+        .invoice-container {{
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }}
+        .header {{
+            border-bottom: 2px solid #eee;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }}
+        .invoice-title {{
+            font-size: 36px;
+            color: #333;
+            margin: 0;
+        }}
+        .invoice-number {{
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }}
+        .parties-section {{
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+        }}
+        .party {{
+            flex: 1;
+        }}
+        .party h3 {{
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 16px;
+        }}
+        .party p {{
+            margin: 5px 0;
+            color: #666;
+            font-size: 14px;
+        }}
+        .line-items {{
+            margin: 30px 0;
+        }}
+        .items-table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }}
+        .items-table th,
+        .items-table td {{
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }}
+        .items-table th {{
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+        }}
+        .summary {{
+            text-align: right;
+            margin-top: 30px;
+        }}
+        .summary-row {{
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 8px 0;
+        }}
+        .summary-total {{
+            font-weight: bold;
+            font-size: 18px;
+            border-top: 2px solid #333;
+            padding-top: 10px;
+        }}
+        .footer {{
+            margin-top: 40px;
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="invoice-container">
+        <div class="header">
+            <h1 class="invoice-title">INVOICE</h1>
+            <div class="invoice-number">Invoice #: {actual_data.get('invoice_number', 'N/A')}</div>
+            <div class="invoice-number">Date: {actual_data.get('invoice_date', 'N/A')}</div>
+            <div class="invoice-number">Due Date: {actual_data.get('due_date', 'N/A')}</div>
+        </div>
+        
+        <div class="parties-section">
+            <div class="party">
+                <h3>Bill To:</h3>
+                <p><strong>{actual_data.get('client_name', 'Client Name')}</strong></p>
+                <p>{actual_data.get('client_address', 'Client Address')}</p>
+                {f"<p>{actual_data.get('client_email', '')}</p>" if actual_data.get('client_email') else ""}
+                {f"<p>{actual_data.get('client_phone', '')}</p>" if actual_data.get('client_phone') else ""}
+            </div>
+            <div class="party">
+                <h3>From:</h3>
+                <p><strong>{actual_data.get('service_provider_name', 'Service Provider')}</strong></p>
+                <p>{actual_data.get('service_provider_address', 'Provider Address')}</p>
+                {f"<p>{actual_data.get('service_provider_email', '')}</p>" if actual_data.get('service_provider_email') else ""}
+                {f"<p>{actual_data.get('service_provider_phone', '')}</p>" if actual_data.get('service_provider_phone') else ""}
+            </div>
+        </div>
+        
+        <div class="line-items">
+            <table class="items-table">
+                <thead>
+                    <tr>
+                        <th>Description</th>
+                        <th>Quantity</th>
+                        <th>Rate</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{actual_data.get('contract_title', 'Service')}</td>
+                        <td>1</td>
+                        <td>{actual_data.get('currency', 'USD')} {actual_data.get('subtotal', '0.00')}</td>
+                        <td>{actual_data.get('currency', 'USD')} {actual_data.get('total_amount', '0.00')}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="summary">
+            <div class="summary-row">
+                <span>Subtotal:</span>
+                <span>{actual_data.get('currency', 'USD')} {actual_data.get('subtotal', '0.00')}</span>
+            </div>
+            <div class="summary-row">
+                <span>Tax:</span>
+                <span>{actual_data.get('currency', 'USD')} {actual_data.get('tax_amount', '0.00')}</span>
+            </div>
+            <div class="summary-row summary-total">
+                <span>Total:</span>
+                <span>{actual_data.get('currency', 'USD')} {actual_data.get('total_amount', '0.00')}</span>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Thank you for your business!</p>
+        </div>
+    </div>
+</body>
+</html>"""
+        
+        return html_content
+
+    def _extract_actual_invoice_data(self, invoice_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract actual invoice data from the nested structure for HTML generation"""
+        
+        actual_data = {}
+        
+        try:
+            # Handle nested invoice data structure
+            if "invoice_header" in invoice_data:
+                header = invoice_data["invoice_header"]
+                actual_data.update({
+                    "invoice_number": header.get("invoice_number"),
+                    "invoice_date": header.get("invoice_date"),
+                    "due_date": header.get("due_date")
+                })
+            
+            if "parties" in invoice_data:
+                parties = invoice_data["parties"]
+                if "client" in parties:
+                    client = parties["client"]
+                    actual_data.update({
+                        "client_name": client.get("name"),
+                        "client_email": client.get("email"),
+                        "client_address": client.get("address"),
+                        "client_phone": client.get("phone")
+                    })
+                
+                if "service_provider" in parties:
+                    provider = parties["service_provider"]
+                    actual_data.update({
+                        "service_provider_name": provider.get("name"),
+                        "service_provider_email": provider.get("email"),
+                        "service_provider_address": provider.get("address"),
+                        "service_provider_phone": provider.get("phone")
+                    })
+            
+            if "financial_details" in invoice_data:
+                financial = invoice_data["financial_details"]
+                actual_data.update({
+                    "subtotal": financial.get("subtotal"),
+                    "tax_amount": financial.get("tax_amount"),
+                    "total_amount": financial.get("total_amount"),
+                    "currency": financial.get("currency")
+                })
+            
+            if "contract_details" in invoice_data:
+                contract = invoice_data["contract_details"]
+                actual_data.update({
+                    "contract_title": contract.get("contract_title")
+                })
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error extracting invoice data: {str(e)}")
+        
+        return actual_data
+
+    async def _save_designs_to_database(self, state: WorkflowState, designs: Dict[str, Any], html_invoices: List[Dict[str, Any]] = None) -> bool:
         """Save generated designs to database for later retrieval"""
         try:
             # Get invoice record to save designs to
@@ -350,6 +625,10 @@ Return only the JSON object, no additional text."""
                 # Add designs to existing invoice_data
                 updated_invoice_data = invoice_record.invoice_data.copy()
                 updated_invoice_data['adaptive_ui_designs'] = designs
+                
+                # Also save HTML invoices if provided
+                if html_invoices:
+                    updated_invoice_data['html_invoices'] = html_invoices
                 
                 # Update the database record
                 from sqlalchemy import update
@@ -383,3 +662,9 @@ Return only the JSON object, no additional text."""
                 return default
         
         return current if current is not None else default
+
+    def _json_serializer(self, obj):
+        """JSON serializer for objects not serializable by default json code"""
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")

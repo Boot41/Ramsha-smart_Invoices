@@ -6,8 +6,8 @@ from typing import Dict, Any
 from pydantic import BaseModel, Field
 from services.orchestrator_service import get_orchestrator_service
 from agents.correction_agent import CorrectionAgent
-from agents.invoice_generator_agent import InvoiceGeneratorAgent
-from agents.ui_invoice_generator_agent import UIInvoiceGeneratorAgent
+from agents.invoice_design_agent import InvoiceDesignAgent
+# from agents.ui_invoice_generator_agent import UIInvoiceGeneratorAgent  # No longer needed
 from middleware.auth import get_current_user
 import logging
 from datetime import datetime
@@ -176,15 +176,12 @@ async def resume_workflow_with_corrections(
             workflow_state = await correction_agent.process(workflow_state)
             logger.info(f"✅ Correction agent completed for workflow {request.workflow_id}")
             
-            # Step 2: Invoice Generation Agent
-            invoice_agent = InvoiceGeneratorAgent()
+            # Step 2: Invoice Design Agent
+            invoice_agent = InvoiceDesignAgent()
             workflow_state = await invoice_agent.process(workflow_state)
-            logger.info(f"✅ Invoice generation completed for workflow {request.workflow_id}")
+            logger.info(f"✅ Invoice design generation completed for workflow {request.workflow_id}")
             
-            # Step 3: UI Invoice Generator Agent
-            ui_agent = UIInvoiceGeneratorAgent()
-            workflow_state = await ui_agent.process(workflow_state)
-            logger.info(f"✅ UI generation completed for workflow {request.workflow_id}")
+            # Step 3: UI generation completed by design agent (no additional step needed)
             
             # Mark workflow as completed
             workflow_state["processing_status"] = "COMPLETED"

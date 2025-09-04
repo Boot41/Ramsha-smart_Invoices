@@ -56,8 +56,8 @@ class CorrectionAgent(BaseAgent):
                 state=state
             )
             
-            # Store corrected invoice data for invoice_generator_agent to save
-            state["final_invoice"] = corrected_invoice_json  # Store for invoice_generator_agent
+            # Store corrected invoice data for invoice_design_agent to use
+            state["final_invoice"] = corrected_invoice_json  # Store for invoice_design_agent
             state["unified_invoice_data_final"] = unified_invoice_data.model_dump()  # Store final unified data
             self.logger.info("✅ Invoice correction completed - data prepared for database save")
             
@@ -432,4 +432,4 @@ class CorrectionAgent(BaseAgent):
             return f"Late fee of ${float(payment_terms.late_fee):.2f} applies for payments received after due date"
         return "No late fee specified"
     
-    # Invoice saving removed - now handled by invoice_generator_agent
+    # Invoice saving removed - now handled by invoice_design_agent

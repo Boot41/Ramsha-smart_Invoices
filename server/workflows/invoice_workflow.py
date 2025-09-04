@@ -9,7 +9,7 @@ from agents.contract_processing_agent import ContractProcessingAgent
 from agents.validation_agent import ValidationAgent
 from agents.correction_agent import CorrectionAgent
 from agents.ui_invoice_generator_agent import UIInvoiceGeneratorAgent
-from agents.invoice_generator_agent import InvoiceGeneratorAgent
+from agents.invoice_design_agent import InvoiceDesignAgent
 from services.contract_rag_service import get_contract_rag_service
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ contract_rag_service = get_contract_rag_service()
 contract_processing_agent = ContractProcessingAgent()
 validation_agent = ValidationAgent()
 correction_agent = CorrectionAgent()
-invoice_generator_agent = InvoiceGeneratorAgent()
+invoice_design_agent = InvoiceDesignAgent()
 ui_invoice_generator_agent = UIInvoiceGeneratorAgent()
 
 async def _orchestrator_node(state: WorkflowState) -> WorkflowState:
@@ -72,8 +72,8 @@ async def _schedule_extraction_node(state: WorkflowState) -> WorkflowState:
     return state
 
 async def _invoice_generation_node(state: WorkflowState) -> WorkflowState:
-    """Create invoice record in database using InvoiceGeneratorAgent"""
-    return await invoice_generator_agent.process(state)
+    """Generate invoice designs using InvoiceDesignAgent"""
+    return await invoice_design_agent.process(state)
 
 async def _quality_assurance_node(state: WorkflowState) -> WorkflowState:
     """Perform quality assurance on generated invoice"""

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query
+from fastapi.responses import HTMLResponse
 from typing import List, Optional
 from services.database_service import get_database_service
 from models.database_models import InvoiceStatus
@@ -236,6 +237,123 @@ async def get_adaptive_ui_designs(invoice_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching adaptive UI designs: {str(e)}")
+
+@router.get("/{invoice_id}/html-invoices")
+async def get_html_invoices(invoice_id: str):
+    """Get generated HTML invoices for a specific invoice"""
+    try:
+        db_service = get_database_service()
+        invoice = await db_service.get_invoice_by_id(invoice_id)
+        
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+        
+        # Extract HTML invoices from invoice_data
+        invoice_data = invoice.invoice_data or {}
+        html_invoices = invoice_data.get('html_invoices', [])
+        
+        if not html_invoices:
+            # Return empty structure if none found
+            return {
+                "invoice_id": invoice_id,
+                "html_invoices": [],
+                "message": "No HTML invoices found for this invoice. The invoice may not have been processed by the design agent yet."
+            }
+        
+        # Return the HTML invoices with invoice metadata
+        return {
+            "invoice_id": invoice_id,
+            "invoice_number": invoice.invoice_number,
+            "workflow_id": invoice.workflow_id,
+            "client_name": invoice.client_name,
+            "service_provider_name": invoice.service_provider_name,
+            "html_invoices": html_invoices,
+            "total_designs": len(html_invoices)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching HTML invoices: {str(e)}")
+
+@router.get("/{invoice_id}/html-invoices/{design_id}")
+async def get_html_invoice_by_design(invoice_id: str, design_id: str):
+    """Get a specific HTML invoice design for rendering"""
+    try:
+        db_service = get_database_service()
+        invoice = await db_service.get_invoice_by_id(invoice_id)
+        
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+        
+        # Extract HTML invoices from invoice_data
+        invoice_data = invoice.invoice_data or {}
+        html_invoices = invoice_data.get('html_invoices', [])
+        
+        # Find the specific design
+        target_invoice = None
+        for html_invoice in html_invoices:
+            if html_invoice.get("design_id") == design_id:
+                target_invoice = html_invoice
+                break
+        
+        if not target_invoice:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"HTML invoice with design_id '{design_id}' not found"
+            )
+        
+        return {
+            "invoice_id": invoice_id,
+            "design_id": design_id,
+            "design_name": target_invoice.get("design_name"),
+            "html_content": target_invoice.get("html_content"),
+            "generated_at": target_invoice.get("generated_at")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching HTML invoice: {str(e)}")
+
+@router.get("/{invoice_id}/preview/{design_id}", response_class=HTMLResponse)
+async def preview_html_invoice(invoice_id: str, design_id: str):
+    """Preview a specific HTML invoice design directly in the browser"""
+    try:
+        db_service = get_database_service()
+        invoice = await db_service.get_invoice_by_id(invoice_id)
+        
+        if not invoice:
+            return HTMLResponse(
+                content="<html><body><h1>Invoice Not Found</h1><p>The requested invoice could not be found.</p></body></html>",
+                status_code=404
+            )
+        
+        # Extract HTML invoices from invoice_data
+        invoice_data = invoice.invoice_data or {}
+        html_invoices = invoice_data.get('html_invoices', [])
+        
+        # Find the specific design
+        target_invoice = None
+        for html_invoice in html_invoices:
+            if html_invoice.get("design_id") == design_id:
+                target_invoice = html_invoice
+                break
+        
+        if not target_invoice:
+            return HTMLResponse(
+                content=f"<html><body><h1>Design Not Found</h1><p>HTML invoice with design_id '{design_id}' not found.</p></body></html>",
+                status_code=404
+            )
+        
+        # Return the HTML content directly for browser rendering
+        return HTMLResponse(content=target_invoice.get("html_content", ""))
+        
+    except Exception as e:
+        return HTMLResponse(
+            content=f"<html><body><h1>Error</h1><p>Error fetching HTML invoice: {str(e)}</p></body></html>",
+            status_code=500
+        )
 
 # Mock Endpoints (existing)
 
