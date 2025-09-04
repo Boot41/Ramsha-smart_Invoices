@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../components/ui/Card';
-import { Badge } from '../../components/ui/Badge';
 import { useAuth } from '../../../hooks/useAuth';
 import type { SignupData } from '../../../types';
+import { Sun, Moon } from 'lucide-react';
 
 const Signup: React.FC = () => {
   const navigate = useNavigate();
@@ -18,6 +17,21 @@ const Signup: React.FC = () => {
   });
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errors, setErrors] = useState<Partial<SignupData & { confirmPassword: string }>>({});
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(theme === 'light' ? 'dark' : 'light');
+  };
 
   const validateForm = (): boolean => {
     const newErrors: Partial<SignupData & { confirmPassword: string }> = {};
@@ -51,8 +65,6 @@ const Signup: React.FC = () => {
         last_name: formData.lastName
       });
       
-      // Check if user is now authenticated (auto-login after registration)
-      // If authenticated, go to dashboard; otherwise go to login
       if (isAuthenticated) {
         navigate('/dashboard');
       } else {
@@ -72,7 +84,6 @@ const Signup: React.FC = () => {
       ...prev,
       [field]: e.target.value
     }));
-    // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({
         ...prev,
@@ -82,43 +93,39 @@ const Signup: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-green-500 to-blue-600 rounded-2xl mb-4">
-            <span className="text-2xl font-bold text-white">SI</span>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center transition-colors duration-300">
+      <div className="container mx-auto p-4">
+        <div className="flex flex-col lg:flex-row w-full lg:w-10/12 xl:w-10/12 bg-white dark:bg-gray-800 rounded-xl mx-auto shadow-lg overflow-hidden">
+          {/* Left Side - Illustration */}
+          <div className="w-full lg:w-1/2 flex-col items-center justify-center p-12 bg-gradient-to-br from-purple-600 to-indigo-600 text-white hidden lg:flex">
+            <div className="text-center">
+              <h1 className="text-4xl font-bold mb-4">Join Smart Invoice</h1>
+              <p className="text-lg mb-8">Create your account to start automating your invoicing process.</p>
+              <div className="w-48 h-48 bg-white/20 rounded-full mx-auto flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-24 h-24 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="17" y1="11" x2="23" y2="11"></line></svg>
+              </div>
+            </div>
           </div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-            Join Smart Invoice
-          </h1>
-          <p className="text-slate-600 mt-2">Create your account and start managing invoices</p>
-        </div>
 
-        <Card shadow="xl" className="backdrop-blur-sm bg-white/80 border-white/20">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-bold text-slate-800">Create Account</CardTitle>
-            <CardDescription className="text-slate-600">
-              Fill in your details to get started
-            </CardDescription>
-          </CardHeader>
+          {/* Right Side - Form */}
+          <div className="w-full lg:w-1/2 py-12 px-12 relative">
+            <button onClick={toggleTheme} className="absolute top-4 right-4 p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+              {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+            </button>
 
-          <form onSubmit={handleSubmit}>
-            <CardContent className="space-y-6">
-              {/* Global error message */}
-              {error && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-sm text-red-600">{error}</p>
-                </div>
-              )}
-              {/* Personal Information */}
-              <div>
-                <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center">
-                  <span className="bg-gradient-to-r from-green-500 to-blue-500 bg-clip-text text-transparent mr-2">
-                    👤
-                  </span>
-                  Personal Information
-                </h3>
+            <h2 className="text-3xl mb-4 font-bold text-gray-800 dark:text-white">Create Account</h2>
+            <p className="mb-4 text-gray-600 dark:text-gray-400">
+              Fill in your details to get started.
+            </p>
+
+            <form onSubmit={handleSubmit}>
+              <div className="space-y-4">
+                {error && (
+                  <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-500/30 rounded-lg">
+                    <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                  </div>
+                )}
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Input
                     label="First Name"
@@ -145,19 +152,7 @@ const Signup: React.FC = () => {
                   onChange={handleChange('email')}
                   error={errors.email}
                   required
-                  className="mt-4"
                 />
-              </div>
-
-
-              {/* Security */}
-              <div>
-                <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center">
-                  <span className="bg-gradient-to-r from-green-500 to-blue-500 bg-clip-text text-transparent mr-2">
-                    🔒
-                  </span>
-                  Security
-                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Input
                     label="Password"
@@ -179,74 +174,46 @@ const Signup: React.FC = () => {
                     required
                   />
                 </div>
-              </div>
 
-              {/* Terms and Conditions */}
-              <div className="flex items-start space-x-3 p-4 bg-slate-50 rounded-lg">
-                <input
-                  type="checkbox"
-                  id="terms"
-                  required
-                  className="w-4 h-4 text-green-600 border-slate-300 rounded focus:ring-green-500 mt-0.5"
-                />
-                <label htmlFor="terms" className="text-sm text-slate-600">
-                  I agree to the{' '}
-                  <a href="#" className="text-green-600 hover:text-green-700 font-medium">
-                    Terms of Service
-                  </a>{' '}
-                  and{' '}
-                  <a href="#" className="text-green-600 hover:text-green-700 font-medium">
-                    Privacy Policy
+                <div className="flex items-start space-x-3">
+                  <input
+                    type="checkbox"
+                    id="terms"
+                    required
+                    className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 mt-1 dark:bg-gray-700 dark:border-gray-600"
+                  />
+                  <label htmlFor="terms" className="text-sm text-gray-600 dark:text-gray-400">
+                    I agree to the{' '}
+                    <a href="#" className="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium">
+                      Terms of Service
+                    </a>{' '}
+                    and{' '}
+                    <a href="#" className="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium">
+                      Privacy Policy
+                    </a>
+                  </label>
+                </div>
+
+                <Button
+                  type="submit"
+                  variant="gradient"
+                  size="lg"
+                  fullWidth
+                  loading={isLoading}
+                  className="from-purple-600 to-indigo-600"
+                >
+                  {isLoading ? 'Creating Account...' : 'Create Account'}
+                </Button>
+
+                <div className="text-center text-sm text-gray-600 dark:text-gray-400">
+                  Already have an account?{' '}
+                  <a href="/auth/login" className="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium">
+                    Sign in
                   </a>
-                </label>
+                </div>
               </div>
-            </CardContent>
-
-            <CardFooter className="flex flex-col space-y-4">
-              <Button
-                type="submit"
-                variant="gradient"
-                size="lg"
-                fullWidth
-                loading={isLoading}
-              >
-                {isLoading ? 'Creating Account...' : 'Create Account'}
-              </Button>
-
-              <div className="text-center">
-                <span className="text-slate-600">Already have an account? </span>
-                <a href="/auth/login" className="text-green-600 hover:text-green-700 font-medium">
-                  Sign in
-                </a>
-              </div>
-            </CardFooter>
-          </form>
-        </Card>
-
-        {/* Features */}
-        <div className="mt-8 text-center">
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="flex flex-col items-center">
-              <Badge variant="success" size="md" className="mb-2">✨ Free Start</Badge>
-              <p className="text-sm text-slate-600">No credit card required</p>
-            </div>
-            <div className="flex flex-col items-center">
-              <Badge variant="info" size="md" className="mb-2">🚀 Quick Setup</Badge>
-              <p className="text-sm text-slate-600">Ready in 2 minutes</p>
-            </div>
-            <div className="flex flex-col items-center">
-              <Badge variant="purple" size="md" className="mb-2">🔒 Secure</Badge>
-              <p className="text-sm text-slate-600">Bank-level security</p>
-            </div>
+            </form>
           </div>
-        </div>
-
-        {/* Enterprise Link */}
-        <div className="mt-6 text-center p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg">
-          <p className="text-slate-700 font-medium mb-2">Need an enterprise solution?</p>
-          <a href="/auth/enterprise-signup" className="text-indigo-600 hover:text-indigo-700 font-semibold">
-            Explore Enterprise Plans →
-          </a>
         </div>
       </div>
     </div>
