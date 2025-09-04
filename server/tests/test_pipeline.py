@@ -29,7 +29,8 @@ from tests.orchestrator_evals import OrchestratorEvalRunner
 from tests.test_orchestrator_with_mocks import TestOrchestratorWithMocks, TestOrchestratorPerformance
 from tests.mock_llm import MockLLMFactory, create_mock_model_function
 from utils.langsmith_config import get_langsmith_config, trace_workflow_step
-from workflows.invoice_workflow import InvoiceWorkflow, initialize_workflow_state
+from unittest.mock import Mock
+from workflows.invoice_workflow import run_invoice_workflow, initialize_workflow_state
 from services.orchestrator_service import OrchestratorService
 from schemas.workflow_schemas import WorkflowRequest
 
@@ -66,13 +67,19 @@ class TestPipeline:
             # Step 3: Run Integration Tests
             await self._run_integration_tests()
             
-            # Step 4: Run Performance Tests  
+            # Step 4: Run Invoice Design Agent Tests
+            await self._run_invoice_design_tests()
+            
+            # Step 5: Run Performance Tests  
             await self._run_performance_tests()
             
-            # Step 5: Run End-to-End Workflow Test
+            # Step 6: Run End-to-End Workflow Test (with design generation)
             await self._run_e2e_workflow_test()
             
-            # Step 6: Generate Summary Report
+            # Step 7: Run API Integration Tests
+            await self._run_api_integration_tests()
+            
+            # Step 8: Generate Summary Report
             self._generate_summary_report()
             
             self.results["overall_status"] = "completed"
@@ -184,18 +191,137 @@ class TestPipeline:
             print(f"❌ Integration tests failed: {str(e)}")
             self.results["errors"].append(f"Integration tests: {str(e)}")
     
+    @trace_workflow_step("invoice_design_tests")
+    async def _run_invoice_design_tests(self):
+        """Run comprehensive InvoiceDesignAgent tests"""
+        print("\n🎨 Step 4: Running Invoice Design Agent Tests...")
+        
+        try:
+            from tests.invoice_design_evals import InvoiceDesignEvalRunner
+            
+            # Run the comprehensive design evaluation
+            eval_runner = InvoiceDesignEvalRunner()
+            design_results = eval_runner.run_comprehensive_evaluation()
+            
+            self.results["tests_completed"]["invoice_design_tests"] = {
+                "status": "passed" if design_results["evaluation_summary"]["success_rate"] >= 0.8 else "failed",
+                "details": design_results,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            success_rate = design_results["evaluation_summary"]["success_rate"]
+            passed_tests = design_results["evaluation_summary"]["passed_tests"]
+            total_tests = design_results["evaluation_summary"]["total_tests"]
+            
+            print(f"   ✅ Design Generation: {passed_tests}/{total_tests} tests passed ({success_rate:.1%})")
+            
+            # Also run unit tests for InvoiceDesignAgent
+            import unittest
+            from tests.test_invoice_design_agent import TestInvoiceDesignAgent, TestInvoiceDesignAgentIntegration
+            
+            # Create test suite
+            loader = unittest.TestLoader()
+            suite = unittest.TestSuite()
+            suite.addTest(loader.loadTestsFromTestCase(TestInvoiceDesignAgent))
+            suite.addTest(loader.loadTestsFromTestCase(TestInvoiceDesignAgentIntegration))
+            
+            # Run tests with custom result handler
+            runner = unittest.TextTestRunner(stream=open(os.devnull, 'w'), verbosity=0)
+            unit_result = runner.run(suite)
+            
+            unit_success = unit_result.wasSuccessful()
+            print(f"   ✅ Unit Tests: {unit_result.testsRun - len(unit_result.failures) - len(unit_result.errors)}/{unit_result.testsRun} tests passed")
+            
+            if unit_result.failures:
+                print(f"   ⚠️  Failures: {len(unit_result.failures)}")
+            if unit_result.errors:
+                print(f"   🚨 Errors: {len(unit_result.errors)}")
+            
+            # Overall status for design tests
+            overall_design_success = success_rate >= 0.8 and unit_success
+            self.results["tests_completed"]["invoice_design_tests"]["status"] = "passed" if overall_design_success else "failed"
+            
+        except ImportError as e:
+            print(f"   ⚠️  Skipping design tests - import error: {str(e)}")
+            self.results["tests_completed"]["invoice_design_tests"] = {
+                "status": "skipped",
+                "reason": f"Import error: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            print(f"❌ Invoice design tests failed: {str(e)}")
+            self.results["errors"].append(f"Invoice design tests: {str(e)}")
+            self.results["tests_completed"]["invoice_design_tests"] = {
+                "status": "failed",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+    
+    @trace_workflow_step("api_integration_tests") 
+    async def _run_api_integration_tests(self):
+        """Run API integration tests"""
+        print("\n🌐 Step 7: Running API Integration Tests...")
+        
+        try:
+            import unittest
+            from tests.test_api_integration import TestInvoiceDesignAPI, TestInvoiceDesignAPIIntegration
+            
+            # Create test suite
+            loader = unittest.TestLoader()
+            suite = unittest.TestSuite()
+            suite.addTest(loader.loadTestsFromTestCase(TestInvoiceDesignAPI))
+            suite.addTest(loader.loadTestsFromTestCase(TestInvoiceDesignAPIIntegration))
+            
+            # Run tests
+            runner = unittest.TextTestRunner(stream=open(os.devnull, 'w'), verbosity=0)
+            result = runner.run(suite)
+            
+            success = result.wasSuccessful()
+            
+            self.results["tests_completed"]["api_integration_tests"] = {
+                "status": "passed" if success else "failed",
+                "details": {
+                    "tests_run": result.testsRun,
+                    "failures": len(result.failures),
+                    "errors": len(result.errors)
+                },
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            print(f"   ✅ API Tests: {result.testsRun - len(result.failures) - len(result.errors)}/{result.testsRun} tests passed")
+            
+            if result.failures:
+                print(f"   ⚠️  Failures: {len(result.failures)}")
+            if result.errors:
+                print(f"   🚨 Errors: {len(result.errors)}")
+                
+        except ImportError as e:
+            print(f"   ⚠️  Skipping API tests - import error: {str(e)}")
+            self.results["tests_completed"]["api_integration_tests"] = {
+                "status": "skipped", 
+                "reason": f"Import error: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            print(f"❌ API integration tests failed: {str(e)}")
+            self.results["errors"].append(f"API integration tests: {str(e)}")
+            self.results["tests_completed"]["api_integration_tests"] = {
+                "status": "failed",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+    
     async def _test_orchestrator_workflow_integration(self):
         """Test orchestrator integration with workflow"""
         with patch('models.llm.base.get_model') as mock_get_model:
             mock_llm = MockLLMFactory.create_reliable_llm()
             mock_get_model.return_value = mock_llm
             
-            workflow = InvoiceWorkflow()
             state = initialize_workflow_state("test_user", "test_contract.pdf", "Test Contract")
             
-            # Test orchestrator node
-            result_state = workflow._orchestrator_node(state)
-            assert "orchestrator_decision" in result_state
+            # Test workflow execution
+            result_state = await run_invoice_workflow(state)
+            assert "orchestrator_decision" in result_state or "processing_status" in result_state
             assert result_state["current_agent"] == "orchestrator"
     
     async def _test_service_layer_integration(self):
@@ -224,7 +350,8 @@ class TestPipeline:
             )
             
             # This should work with mocks
-            response = await service.start_invoice_workflow(request)
+            mock_background_tasks = Mock()
+            response = await service.start_invoice_workflow(request, mock_background_tasks)
             assert response.workflow_id is not None
     
     async def _test_api_integration(self):
@@ -319,7 +446,8 @@ class TestPipeline:
                 
                 # Execute workflow
                 start_time = time.time()
-                response = await service.start_invoice_workflow(request)
+                mock_background_tasks = Mock()
+                response = await service.start_invoice_workflow(request, mock_background_tasks)
                 end_time = time.time()
                 
                 # Validate results

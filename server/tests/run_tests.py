@@ -45,18 +45,33 @@ def load_env_file():
 load_env_file()
 
 def run_evaluations():
-    """Run orchestrator evaluations only"""
-    print("🎯 Running Orchestrator Evaluations...")
+    """Run orchestrator and design agent evaluations"""
+    print("🎯 Running Agent Evaluations...")
     
+    # Run orchestrator evaluations
     from tests.orchestrator_evals import OrchestratorEvalRunner
+    orchestrator_runner = OrchestratorEvalRunner()
+    orchestrator_results = orchestrator_runner.run_comprehensive_evaluation()
     
-    runner = OrchestratorEvalRunner()
-    results = runner.run_comprehensive_evaluation()
-    
-    print(f"\n📊 Results Summary:")
-    print(f"   Overall Success: {'✅ PASSED' if results['overall_success'] else '❌ FAILED'}")
-    
-    return 0 if results['overall_success'] else 1
+    # Run invoice design evaluations
+    try:
+        from tests.invoice_design_evals import InvoiceDesignEvalRunner
+        design_runner = InvoiceDesignEvalRunner()
+        design_results = design_runner.run_comprehensive_evaluation()
+        
+        print(f"\n📊 Results Summary:")
+        print(f"   Orchestrator: {'✅ PASSED' if orchestrator_results['overall_success'] else '❌ FAILED'}")
+        print(f"   Design Agent: {'✅ PASSED' if design_results['evaluation_summary']['success_rate'] >= 0.8 else '❌ FAILED'}")
+        
+        overall_success = orchestrator_results['overall_success'] and design_results['evaluation_summary']['success_rate'] >= 0.8
+        return 0 if overall_success else 1
+        
+    except ImportError:
+        print("⚠️  Invoice design evaluations skipped (import error)")
+        print(f"\n📊 Results Summary:")
+        print(f"   Orchestrator: {'✅ PASSED' if orchestrator_results['overall_success'] else '❌ FAILED'}")
+        
+        return 0 if orchestrator_results['overall_success'] else 1
 
 def run_unit_tests():
     """Run unit tests only"""
@@ -100,7 +115,7 @@ def run_quick_tests():
         # Test 1: Import all modules
         print("📦 Testing imports...")
         from agents.orchestrator_agent import OrchestratorAgent
-        from workflows.invoice_workflow import InvoiceWorkflow
+        from workflows.invoice_workflow import run_invoice_workflow
         from services.orchestrator_service import OrchestratorService
         from tests.mock_llm import MockLLMFactory
         print("✅ All imports successful")
@@ -108,7 +123,8 @@ def run_quick_tests():
         # Test 2: Create instances
         print("🏗️  Testing instance creation...")
         orchestrator = OrchestratorAgent()
-        workflow = InvoiceWorkflow()
+        # Test workflow function exists
+        assert callable(run_invoice_workflow)
         mock_llm = MockLLMFactory.create_reliable_llm()
         print("✅ All instances created successfully")
         

@@ -3,12 +3,20 @@ import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock
 from datetime import datetime
 import json
+from functools import wraps
+
+def async_test(func):
+    """Decorator to run async test methods"""
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        return asyncio.run(func(self, *args, **kwargs))
+    return wrapper
 
 from agents.orchestrator_agent import OrchestratorAgent
-from workflows.invoice_workflow import InvoiceWorkflow, initialize_workflow_state
+from workflows.invoice_workflow import run_invoice_workflow, initialize_workflow_state
 from services.orchestrator_service import OrchestratorService
 from schemas.workflow_schemas import WorkflowRequest, ProcessingStatus
-from tests.mock_llm import MockLLMFactory, create_mock_model_function
+from tests.mock_llm import MockLLMFactory, MockVertexAIModel, create_mock_model_function
 from utils.langsmith_config import get_langsmith_config
 
 class TestOrchestratorWithMocks(unittest.TestCase):
@@ -129,6 +137,7 @@ class TestOrchestratorWithMocks(unittest.TestCase):
         validated_state = workflow._validation_node(processed_state)
         self.assertIn("validation_results", validated_state)
         
+    @async_test
     @patch('db.db.get_pinecone_client')
     @patch('models.llm.base.get_model')
     async def test_orchestrator_service_with_mocks(self, mock_get_model, mock_pinecone):
@@ -148,7 +157,9 @@ class TestOrchestratorWithMocks(unittest.TestCase):
         service = OrchestratorService()
         
         # Test workflow execution
-        response = await service.start_invoice_workflow(self.test_request)
+        from unittest.mock import Mock
+        mock_background_tasks = Mock()
+        response = await service.start_invoice_workflow(self.test_request, mock_background_tasks)
         
         self.assertIsNotNone(response.workflow_id)
         self.assertIn(response.status, [ProcessingStatus.SUCCESS, ProcessingStatus.COMPLETED, ProcessingStatus.FAILED])

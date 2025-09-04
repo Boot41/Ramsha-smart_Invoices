@@ -197,7 +197,109 @@ class OrchestratorEvals:
                 }
             },
             
-            # Test Case 10: Edge case - unexpected state
+            # Test Case 10: Invoice created, route to design generation
+            {
+                "name": "invoice_to_design_generation",
+                "description": "After invoice creation, should route to design generation",
+                "input_state": self._create_base_state({
+                    "invoice_created": True,
+                    "invoice_id": "test-invoice-123",
+                    "final_invoice": {"id": "test-invoice-123"},
+                    "design_generation_completed": False,
+                    "attempt_count": 1
+                }),
+                "expected_decision": {
+                    "next_action": "invoice_design",
+                    "confidence": 0.9
+                },
+                "success_criteria": {
+                    "correct_routing": True,
+                    "design_flow_logic": True
+                }
+            },
+            
+            # Test Case 11: Design generation completed, route to quality assurance  
+            {
+                "name": "design_to_quality_assurance",
+                "description": "After design generation, should route to quality assurance",
+                "input_state": self._create_base_state({
+                    "invoice_created": True,
+                    "invoice_id": "test-invoice-123",
+                    "design_generation_completed": True,
+                    "invoice_designs": {
+                        "designs": [
+                            {"design_name": "Modern & Clean"},
+                            {"design_name": "Classic & Professional"},
+                            {"design_name": "Bold & Creative"}
+                        ]
+                    },
+                    "quality_score": None,
+                    "attempt_count": 1
+                }),
+                "expected_decision": {
+                    "next_action": "quality_assurance",
+                    "confidence": 0.8
+                },
+                "success_criteria": {
+                    "correct_routing": True,
+                    "quality_flow_logic": True
+                }
+            },
+            
+            # Test Case 12: Design generation failed, retry or error recovery
+            {
+                "name": "design_generation_failed",
+                "description": "Failed design generation should be handled appropriately",
+                "input_state": self._create_base_state({
+                    "invoice_created": True,
+                    "invoice_id": "test-invoice-123", 
+                    "design_generation_completed": False,
+                    "errors": [
+                        {"agent": "invoice_design", "error": "LLM API failure"}
+                    ],
+                    "attempt_count": 1,
+                    "max_attempts": 3
+                }),
+                "expected_decision": {
+                    "next_action": "error_recovery",
+                    "confidence": 0.3
+                },
+                "success_criteria": {
+                    "correct_routing": True,
+                    "error_handling_logic": True
+                }
+            },
+            
+            # Test Case 13: Complete workflow with designs and quality check
+            {
+                "name": "complete_workflow_with_designs",
+                "description": "Complete workflow with designs and quality check should finish successfully",
+                "input_state": self._create_base_state({
+                    "invoice_created": True,
+                    "invoice_id": "test-invoice-123",
+                    "design_generation_completed": True,
+                    "invoice_designs": {
+                        "designs": [
+                            {"design_name": "Modern & Clean", "design_id": "modern_clean"},
+                            {"design_name": "Classic & Professional", "design_id": "classic_professional"},
+                            {"design_name": "Bold & Creative", "design_id": "bold_creative"}
+                        ]
+                    },
+                    "quality_score": 0.85,
+                    "attempt_count": 1
+                }),
+                "expected_decision": {
+                    "next_action": "complete_success",
+                    "confidence": 0.95
+                },
+                "success_criteria": {
+                    "correct_routing": True,
+                    "completion_logic": True,
+                    "workflow_success": True
+                }
+            },
+            
+            # Test Case 14: Edge case - unexpected state
             {
                 "name": "unexpected_state_recovery",
                 "description": "Unexpected state should route to error recovery",

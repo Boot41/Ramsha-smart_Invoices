@@ -7,6 +7,7 @@ import { Dashboard } from '../pages/dashboard';
 import { InvoicesList, InvoiceTemplates, InvoiceScheduling } from '../pages/invoices';
 import InvoiceTemplatesList from '../pages/invoices/InvoiceTemplatesList';
 import InvoicePreviewDemo from '../pages/invoices/InvoicePreviewDemo';
+import InvoicePreviewPage from '../pages/invoices/InvoicePreviewPage';
 import { ContractsList } from '../pages/contracts';
 import { Login, Signup, EnterpriseSignup } from '../pages/auth';
 import BotsList from '../pages/bots/BotsList';
@@ -51,6 +52,10 @@ export const router = createBrowserRouter([
           {
             path: 'preview-demo',
             element: <InvoicePreviewDemo />
+          },
+          {
+            path: 'preview/:invoiceId',
+            element: <InvoicePreviewPage />
           }
         ]
       },

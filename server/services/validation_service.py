@@ -4,6 +4,7 @@ import logging
 from enum import Enum
 from dataclasses import dataclass
 from schemas.contract_schemas import ContractInvoiceData
+from schemas.unified_invoice_schemas import UnifiedInvoiceData
 from schemas.workflow_schemas import ProcessingStatus
 
 logger = logging.getLogger(__name__)
@@ -794,6 +795,100 @@ class InvoiceDataValidationService:
         )
         
         self.logger.info(f"✅ Raw validation completed - Valid: {is_valid}, Score: {validation_score:.2f}, Confidence: {confidence_score:.2f}, Issues: {len(issues)}, Missing fields: {len(missing_required_fields)}, Human input required: {human_input_required}")
+        if missing_required_fields:
+            self.logger.info(f"Missing required fields: {missing_required_fields}")
+        if issues:
+            self.logger.info(f"Issues found: {[f'{i.field_name}: {i.message}' for i in issues[:3]]}{' ...' if len(issues) > 3 else ''}")
+        
+        return result
+    
+    def validate_unified_invoice_data(self, invoice_data: UnifiedInvoiceData, user_id: str, contract_name: str) -> ValidationResult:
+        """
+        Validate unified invoice data for completeness and correctness
+        
+        Args:
+            invoice_data: The unified invoice data to validate
+            user_id: User ID for logging/tracking
+            contract_name: Contract name for context
+            
+        Returns:
+            ValidationResult with validation status and issues
+        """
+        self.logger.info(f"🔍 Starting unified validation for contract: {contract_name}")
+        
+        issues = []
+        missing_required_fields = []
+        validation_score = 1.0
+        
+        # Convert unified invoice data to dict for validation
+        data_dict = invoice_data.model_dump()
+        self.logger.debug(f"Unified data dict keys: {list(data_dict.keys()) if data_dict else 'None'}")
+        
+        # Validate required fields using the same logic as before
+        for field_path, field_config in self.required_fields.items():
+            field_value = self._get_nested_field(data_dict, field_path)
+            
+            self.logger.debug(f"Validating field {field_path}: value={field_value}, required={field_config['required']}")
+            
+            if field_config["required"] and (field_value is None or field_value == ""):
+                missing_required_fields.append(field_path)
+                issues.append(ValidationIssue(
+                    field_name=field_path,
+                    issue_type="missing_required",
+                    severity=ValidationSeverity.ERROR,
+                    message=f"Required field '{field_path}' is missing: {field_config['description']}",
+                    current_value=field_value,
+                    requires_human_input=True
+                ))
+                validation_score -= 0.15
+                self.logger.debug(f"Missing required field {field_path}, score now: {validation_score:.2f}")
+            
+            elif field_value is not None and field_value != "":
+                # Validate field format/content
+                validation_issue = self._validate_field_content(field_path, field_value, field_config)
+                if validation_issue:
+                    issues.append(validation_issue)
+                    if validation_issue.severity == ValidationSeverity.ERROR:
+                        validation_score -= 0.10
+                    elif validation_issue.severity == ValidationSeverity.WARNING:
+                        validation_score -= 0.05
+                    self.logger.debug(f"Validation issue for {field_path}: {validation_issue.message}")
+        
+        # Additional business logic validations
+        business_issues = self._perform_business_validation(data_dict)
+        issues.extend(business_issues)
+        
+        # Calculate final scores
+        validation_score = max(0.0, validation_score)
+        
+        # Determine validity
+        is_valid = (
+            len(missing_required_fields) == 0 and 
+            all(issue.severity != ValidationSeverity.ERROR for issue in issues) and
+            validation_score >= 0.6
+        )
+        
+        # Determine human input requirement
+        human_input_required = self._determine_human_input_required(
+            missing_required_fields, issues, validation_score
+        )
+        
+        # Calculate confidence based on completeness and validation issues
+        confidence_score = self._calculate_confidence_score(data_dict, issues)
+        
+        self.logger.debug(f"Unified validation results - Score: {validation_score:.2f}, Valid: {is_valid}, Human input: {human_input_required}")
+        
+        result = ValidationResult(
+            is_valid=is_valid,
+            validation_score=validation_score,
+            issues=issues,
+            missing_required_fields=missing_required_fields,
+            human_input_required=human_input_required,
+            confidence_score=confidence_score,
+            validation_timestamp=datetime.now().isoformat()
+        )
+        
+        self.logger.info(f"✅ Unified validation completed - Valid: {is_valid}, Score: {validation_score:.2f}, Confidence: {confidence_score:.2f}, Issues: {len(issues)}, Missing fields: {len(missing_required_fields)}, Human input required: {human_input_required}")
         if missing_required_fields:
             self.logger.info(f"Missing required fields: {missing_required_fields}")
         if issues:

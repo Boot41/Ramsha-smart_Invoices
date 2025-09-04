@@ -4,6 +4,7 @@ from datetime import datetime
 from .base_agent import BaseAgent
 from schemas.workflow_schemas import WorkflowState, AgentType, ProcessingStatus
 from schemas.contract_schemas import ContractInvoiceData
+from schemas.unified_invoice_schemas import UnifiedInvoiceData
 from services.validation_service import get_validation_service, ValidationResult
 
 logger = logging.getLogger(__name__)
@@ -40,46 +41,22 @@ class ValidationAgent(BaseAgent):
         if not invoice_data and not contract_data:
             raise ValueError("No invoice data or contract data found in workflow state - validation requires processed contract data")
         
-        # Extract the actual invoice data structure
-        structured_invoice_data = self._extract_invoice_data(invoice_data, contract_data)
+        # Convert to unified format first
+        unified_invoice_data = self._convert_to_unified_format(invoice_data, contract_data)
         
-        if not structured_invoice_data:
+        if not unified_invoice_data:
             # Create minimal validation result for empty data
             validation_result = self._create_empty_data_validation_result()
             self._update_state_with_validation_result(state, validation_result)
             return state
         
         try:
-            # Convert to ContractInvoiceData if needed
-            if isinstance(structured_invoice_data, dict):
-                # Preprocess data to handle Pydantic validation issues
-                processed_data = self._preprocess_data_for_schema(structured_invoice_data)
-                try:
-                    invoice_data_obj = ContractInvoiceData(**processed_data)
-                except Exception as pydantic_error:
-                    self.logger.warning(f"Pydantic validation failed, using raw data for custom validation: {str(pydantic_error)}")
-                    # Fall back to custom validation with raw data
-                    validation_result = self.validation_service.validate_raw_invoice_data(
-                        raw_data=structured_invoice_data,
-                        user_id=user_id,
-                        contract_name=contract_name
-                    )
-                    self._update_state_with_validation_result(state, validation_result)
-                    if validation_result.human_input_required:
-                        await self._handle_human_input_requirement_realtime(state, validation_result, user_id, contract_name)
-                    else:
-                        state["processing_status"] = ProcessingStatus.SUCCESS.value
-                        # Log validation success
-                        workflow_id = state.get('workflow_id')
-                        if workflow_id:
-                            self.logger.info(f'✅ Raw data validation passed for workflow {workflow_id}')
-                    return state
-            else:
-                invoice_data_obj = structured_invoice_data
+            # Store unified format in state for consistency
+            state["unified_invoice_data"] = unified_invoice_data.model_dump()
             
-            # Perform validation with Pydantic object
-            validation_result = self.validation_service.validate_invoice_data(
-                invoice_data=invoice_data_obj,
+            # Perform validation with unified data
+            validation_result = self.validation_service.validate_unified_invoice_data(
+                invoice_data=unified_invoice_data,
                 user_id=user_id,
                 contract_name=contract_name
             )
@@ -132,14 +109,16 @@ class ValidationAgent(BaseAgent):
             
             return state
     
-    def _extract_invoice_data(self, invoice_data: Optional[Dict], contract_data: Optional[Dict]) -> Optional[Dict]:
-        """Extract structured invoice data from various possible formats"""
+    def _convert_to_unified_format(self, invoice_data: Optional[Dict], contract_data: Optional[Dict]) -> Optional[UnifiedInvoiceData]:
+        """Convert various invoice data formats to unified format"""
         
-        self.logger.debug(f"Extracting invoice data - invoice_data type: {type(invoice_data)}, contract_data type: {type(contract_data)}")
+        self.logger.debug(f"Converting to unified format - invoice_data type: {type(invoice_data)}, contract_data type: {type(contract_data)}")
+        
+        # Try to find data to convert
+        source_data = None
         
         # Try invoice_data first (preferred source)
         if invoice_data:
-            # Handle multiple nested structures more robustly
             if isinstance(invoice_data, dict):
                 # Try nested structures first
                 for path in ["invoice_response.invoice_data", "invoice_data", "data", "structured_data"]:
@@ -152,20 +131,31 @@ class ValidationAgent(BaseAgent):
                             break
                     if value and isinstance(value, dict) and self._has_required_structure(value):
                         self.logger.debug(f"Found structured data at path: {path}")
-                        return value
+                        source_data = value
+                        break
                 
                 # Check if invoice_data itself is structured
-                if self._has_required_structure(invoice_data):
+                if not source_data and self._has_required_structure(invoice_data):
                     self.logger.debug("Found structured data in root invoice_data")
-                    return invoice_data
+                    source_data = invoice_data
         
         # Try contract_data as fallback
-        if contract_data and isinstance(contract_data, dict) and self._has_required_structure(contract_data):
+        if not source_data and contract_data and isinstance(contract_data, dict) and self._has_required_structure(contract_data):
             self.logger.debug("Found structured data in contract_data")
-            return contract_data
+            source_data = contract_data
         
-        self.logger.warning("Could not extract structured invoice data from state")
-        return None
+        if not source_data:
+            self.logger.warning("Could not find structured invoice data to convert")
+            return None
+        
+        try:
+            # Convert to unified format
+            unified_data = UnifiedInvoiceData.from_legacy_format(source_data)
+            self.logger.info("✅ Successfully converted to unified invoice format")
+            return unified_data
+        except Exception as e:
+            self.logger.error(f"❌ Failed to convert to unified format: {str(e)}")
+            return None
     
     def _has_required_structure(self, data: Dict) -> bool:
         """Check if data has expected invoice structure"""
@@ -323,19 +313,39 @@ class ValidationAgent(BaseAgent):
             field_values = human_input_data.get('field_values', human_input_data)
             self.logger.info(f"📝 Processing field values: {field_values}")
             
-            # Update invoice data with human input
-            updated_invoice_data = self._merge_human_input_with_invoice_data(state, field_values)
+            # Get current unified invoice data
+            current_unified_data = state.get("unified_invoice_data")
+            if current_unified_data:
+                unified_invoice = UnifiedInvoiceData(**current_unified_data)
+            else:
+                # Fallback: convert from legacy format
+                unified_invoice = self._convert_to_unified_format(
+                    state.get("invoice_data"),
+                    state.get("contract_data")
+                )
             
-            # Update state with corrected data
-            state["invoice_data"]["invoice_response"]["invoice_data"] = updated_invoice_data
+            if not unified_invoice:
+                raise ValueError("No invoice data found to apply corrections to")
+            
+            # Apply manual corrections using the unified format
+            corrected_unified_data = unified_invoice.apply_manual_corrections(field_values)
+            
+            # Update state with corrected unified data
+            state["unified_invoice_data"] = corrected_unified_data.model_dump()
+            
+            # Also update legacy formats for backward compatibility
+            state["invoice_data"] = {
+                "invoice_response": {
+                    "invoice_data": corrected_unified_data.to_legacy_contract_invoice_data()
+                }
+            }
             
             # Re-run validation on updated data
             user_id = state.get("user_id")
             contract_name = state.get("contract_name")
             
-            updated_invoice_obj = ContractInvoiceData(**updated_invoice_data)
-            validation_result = self.validation_service.validate_invoice_data(
-                invoice_data=updated_invoice_obj,
+            validation_result = self.validation_service.validate_unified_invoice_data(
+                invoice_data=corrected_unified_data,
                 user_id=user_id,
                 contract_name=contract_name
             )
@@ -375,38 +385,6 @@ class ValidationAgent(BaseAgent):
             
             return state
     
-    def _merge_human_input_with_invoice_data(self, state: WorkflowState, human_input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Merge human-provided data with existing invoice data
-        """
-        
-        # Get current invoice data
-        current_data = self._extract_invoice_data(
-            state.get("invoice_data"),
-            state.get("contract_data")
-        ) or {}
-        
-        self.logger.info(f"🔍 Current invoice data structure: {current_data}")
-        
-        # Create a deep copy to avoid modifying the original
-        import copy
-        updated_data = copy.deepcopy(current_data)
-        
-        # Process human input fields
-        self.logger.info(f"🔄 Merging human input: {human_input_data}")
-        for field_path, new_value in human_input_data.items():
-            if new_value is not None and new_value != "":
-                self.logger.info(f"📝 Setting field {field_path} = {new_value}")
-                self._set_nested_field(updated_data, field_path, new_value)
-        
-        # Update timestamp
-        updated_data["extracted_at"] = datetime.now()
-        updated_data["human_input_applied"] = True
-        updated_data["human_input_timestamp"] = datetime.now().isoformat()
-        
-        self.logger.info(f"✅ Updated invoice data after merge: {updated_data}")
-        
-        return updated_data
     
     def _set_nested_field(self, data_dict: Dict[str, Any], field_path: str, value: Any):
         """
@@ -471,5 +449,7 @@ class ValidationAgent(BaseAgent):
             return True
         except:
             return False
-    
-    
+        
+
+
+        

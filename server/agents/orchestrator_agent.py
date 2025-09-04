@@ -149,13 +149,24 @@ class OrchestratorAgent(BaseAgent):
                 "confidence": 0.9
             }
         
-        # Invoice created → quality assurance
+        # Invoice created → invoice design generation
         if (state.get("invoice_created") and 
+            state.get("invoice_id") and
+            not state.get("design_generation_completed")):
+            return {
+                "next_action": "invoice_design",
+                "reason": "Invoice created - generating adaptive UI designs",
+                "confidence": 0.9
+            }
+        
+        # Design generation completed → quality assurance
+        if (state.get("design_generation_completed") and 
+            state.get("invoice_created") and 
             state.get("invoice_id") and
             not state.get("quality_score")):
             return {
                 "next_action": "quality_assurance",
-                "reason": "Invoice created - quality check required",
+                "reason": "Design generation completed - quality check required",
                 "confidence": 0.8
             }
         
@@ -288,8 +299,9 @@ def route_from_orchestrator(state: WorkflowState) -> str:
         "validation": "validation", 
         "schedule_extraction": "schedule_extraction",
         "invoice_generation": "invoice_generation",
+        "invoice_design": "invoice_design",
         "quality_assurance": "quality_assurance",
-        "ui_invoice_generator": "ui_invoice_generator",
+        # "ui_invoice_generator": "ui_invoice_generator",  # Replaced by invoice_design
         "storage_scheduling": "storage_scheduling",
         "feedback_learning": "feedback_learning",
         "error_recovery": "error_recovery",

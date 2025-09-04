@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, Union
 from datetime import datetime, timezone, date
 import logging
 import json
@@ -13,6 +13,7 @@ from schemas.auth_schemas import (
     SecurityEventType, AuthStatus
 )
 from schemas.address_schemas import AddressCreate, AddressUpdate
+from schemas.unified_invoice_schemas import UnifiedInvoiceData
 
 logger = logging.getLogger(__name__)
 
@@ -444,6 +445,90 @@ class DatabaseService:
             return [], 0
 
     # Invoice Operations
+    async def create_invoice_from_unified(self, unified_data: UnifiedInvoiceData) -> Optional[Invoice]:
+        """Create a new invoice from unified invoice data format"""
+        try:
+            async with self.get_session() as session:
+                # Convert unified data to database format
+                invoice_json = unified_data.to_database_format()
+                
+                # Extract key fields from unified data
+                header = invoice_json.get("invoice_header", {})
+                parties = invoice_json.get("parties", {})
+                client = parties.get("client", {})
+                provider = parties.get("service_provider", {})
+                payment_info = invoice_json.get("payment_information", {})
+                totals = invoice_json.get("totals", {})
+                contract_details = invoice_json.get("contract_details", {})
+                metadata = invoice_json.get("metadata", {})
+                
+                # Parse dates from unified data
+                invoice_date = datetime.now()
+                if unified_data.invoice_date:
+                    if isinstance(unified_data.invoice_date, str):
+                        invoice_date = datetime.fromisoformat(unified_data.invoice_date)
+                    else:
+                        invoice_date = datetime.combine(unified_data.invoice_date, datetime.min.time())
+                
+                due_date = datetime.now()
+                if unified_data.due_date:
+                    if isinstance(unified_data.due_date, str):
+                        due_date = datetime.fromisoformat(unified_data.due_date)
+                    else:
+                        due_date = datetime.combine(unified_data.due_date, datetime.min.time())
+                
+                invoice = Invoice(
+                    invoice_number=unified_data.invoice_number or unified_data.invoice_id,
+                    workflow_id=unified_data.metadata.workflow_id or "",
+                    user_id=unified_data.metadata.user_id,
+                    invoice_date=invoice_date,
+                    due_date=due_date,
+                    status=InvoiceStatus.GENERATED,
+                    
+                    # Client information from unified format
+                    client_name=unified_data.client.name if unified_data.client else "",
+                    client_email=unified_data.client.email if unified_data.client else None,
+                    client_address=unified_data.client.address if unified_data.client else None,
+                    client_phone=unified_data.client.phone if unified_data.client else None,
+                    
+                    # Service provider information from unified format
+                    service_provider_name=unified_data.service_provider.name if unified_data.service_provider else "",
+                    service_provider_email=unified_data.service_provider.email if unified_data.service_provider else None,
+                    service_provider_address=unified_data.service_provider.address if unified_data.service_provider else None,
+                    service_provider_phone=unified_data.service_provider.phone if unified_data.service_provider else None,
+                    
+                    # Financial information from unified format
+                    subtotal=float(unified_data.totals.subtotal) if unified_data.totals else 0.0,
+                    tax_amount=float(unified_data.totals.tax_amount) if unified_data.totals else 0.0,
+                    total_amount=float(unified_data.totals.total_amount) if unified_data.totals else 0.0,
+                    currency=unified_data.payment_terms.currency.value if unified_data.payment_terms else "USD",
+                    
+                    # Contract details from unified format
+                    contract_title=unified_data.contract_title,
+                    contract_type=unified_data.contract_type.value if unified_data.contract_type else None,
+                    contract_reference=unified_data.contract_reference,
+                    
+                    # Complete unified invoice data - serialize for JSON storage
+                    invoice_data=serialize_dates_for_json(unified_data.model_dump()),
+                    
+                    # AI metadata from unified format
+                    generated_by_agent="correction_agent",
+                    confidence_score=float(unified_data.metadata.confidence_score) if unified_data.metadata.confidence_score else 0.0,
+                    quality_score=float(unified_data.metadata.quality_score) if unified_data.metadata.quality_score else 0.0,
+                    human_reviewed=unified_data.metadata.human_reviewed or unified_data.metadata.human_input_applied
+                )
+                
+                session.add(invoice)
+                await session.commit()
+                await session.refresh(invoice)
+                
+                logger.info(f"✅ Invoice created from unified data: {invoice.invoice_number}")
+                return invoice
+                
+        except Exception as e:
+            logger.error(f"❌ Error creating invoice from unified data: {str(e)}")
+            return None
+
     async def create_invoice(self, invoice_data: Dict[str, Any]) -> Optional[Invoice]:
         """Create a new invoice in the database"""
         try:

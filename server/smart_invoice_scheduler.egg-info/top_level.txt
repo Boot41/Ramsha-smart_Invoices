@@ -1,0 +1,16 @@
+agents
+controller
+db
+details
+logs
+middleware
+models
+routes
+schemas
+scripts
+services
+templates
+test_data
+tests
+utils
+workflows

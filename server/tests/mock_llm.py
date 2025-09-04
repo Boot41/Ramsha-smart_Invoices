@@ -2,21 +2,51 @@ from typing import Dict, Any, Optional, List, AsyncIterator
 import json
 import random
 from unittest.mock import Mock
-from langchain_core.messages import BaseMessage, AIMessage
-from langchain_core.language_models.base import BaseLanguageModel
-from langchain_core.callbacks.manager import CallbackManagerForLLMRun, AsyncCallbackManagerForLLMRun
-from langchain_core.outputs import LLMResult, Generation
+from dataclasses import dataclass
 
-class MockLLMResponse:
-    """Mock response object that mimics LangChain LLM response"""
+@dataclass
+class MockGenerateContentResponse:
+    """Mock response object that mimics Vertex AI GenerateContentResponse"""
+    text: str
     
-    def __init__(self, content: str, confidence: float = 0.8):
-        self.content = content
-        self.confidence = confidence
-        self.usage_metadata = {"total_tokens": len(content.split())}
+    def __init__(self, text: str):
+        self.text = text
+        self._candidates = [MockCandidate(text)]
+        self.usage_metadata = MockUsageMetadata(len(text.split()))
+    
+    @property
+    def content(self) -> str:
+        """Backward compatibility property for LangChain-style access"""
+        return self.text
 
-class MockLLM(BaseLanguageModel):
-    """Mock LLM implementation for testing agents without real API calls"""
+@dataclass  
+class MockCandidate:
+    """Mock candidate response"""
+    content: 'MockContent'
+    
+    def __init__(self, text: str):
+        self.content = MockContent(text)
+
+@dataclass
+class MockContent:
+    """Mock content with parts"""
+    parts: List['MockPart']
+    
+    def __init__(self, text: str):
+        self.parts = [MockPart(text)]
+
+@dataclass
+class MockPart:
+    """Mock content part"""
+    text: str
+
+@dataclass
+class MockUsageMetadata:
+    """Mock usage metadata"""
+    total_tokens: int
+
+class MockVertexAIModel:
+    """Mock Vertex AI GenerativeModel implementation for testing agents without real API calls"""
     
     def __init__(self, response_patterns: Optional[Dict[str, Any]] = None, 
                  simulate_failures: bool = False, failure_rate: float = 0.1, **kwargs):
@@ -28,17 +58,27 @@ class MockLLM(BaseLanguageModel):
             simulate_failures: Whether to randomly simulate failures  
             failure_rate: Probability of simulated failures (0.0 to 1.0)
         """
-        super().__init__(**kwargs)
-        # Use object.__setattr__ to bypass Pydantic validation
-        object.__setattr__(self, 'response_patterns', response_patterns or self._default_patterns())
-        object.__setattr__(self, 'simulate_failures', simulate_failures)
-        object.__setattr__(self, 'failure_rate', failure_rate)
-        object.__setattr__(self, 'call_count', 0)
-        object.__setattr__(self, 'call_history', [])
+        self.response_patterns = response_patterns or self._default_patterns()
+        self.simulate_failures = simulate_failures
+        self.failure_rate = failure_rate
+        self.call_count = 0
+        self.call_history = []
     
-    def invoke(self, input_text: str, config: Optional[Dict] = None) -> MockLLMResponse:
-        """Mock the invoke method"""
-        object.__setattr__(self, 'call_count', self.call_count + 1)
+    def generate_content(self, prompt: str, **kwargs) -> MockGenerateContentResponse:
+        """Mock the generate_content method (synchronous)"""
+        return self._generate_response_obj(prompt)
+    
+    async def generate_content_async(self, prompt: str, **kwargs) -> MockGenerateContentResponse:
+        """Mock the generate_content_async method"""
+        return self._generate_response_obj(prompt)
+    
+    def invoke(self, input_text: str, **kwargs) -> MockGenerateContentResponse:
+        """Mock invoke method for backward compatibility"""
+        return self._generate_response_obj(input_text)
+    
+    def _generate_response_obj(self, input_text: str, config: Optional[Dict] = None) -> MockGenerateContentResponse:
+        """Generate mock response object"""
+        self.call_count += 1
         
         # Record call for testing
         call_record = {
@@ -55,58 +95,9 @@ class MockLLM(BaseLanguageModel):
         
         # Find matching response pattern
         response_content = self._generate_response(input_text)
-        confidence = self._calculate_confidence(input_text)
         
-        return MockLLMResponse(content=response_content, confidence=confidence)
+        return MockGenerateContentResponse(text=response_content)
 
-    def _generate(self, prompts: List[str], stop: Optional[List[str]] = None, 
-                  run_manager: Optional[CallbackManagerForLLMRun] = None, **kwargs: Any) -> LLMResult:
-        """Generate responses for multiple prompts"""
-        generations = []
-        for prompt in prompts:
-            response = self.invoke(prompt)
-            generations.append([Generation(text=response.content)])
-        return LLMResult(generations=generations)
-
-    async def _agenerate(self, prompts: List[str], stop: Optional[List[str]] = None,
-                        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None, **kwargs: Any) -> LLMResult:
-        """Async generate responses for multiple prompts"""
-        return self._generate(prompts, stop, None, **kwargs)
-
-    def predict(self, text: str, **kwargs: Any) -> str:
-        """Predict method for compatibility"""
-        response = self.invoke(text)
-        return response.content
-
-    def predict_messages(self, messages: List[BaseMessage], **kwargs: Any) -> BaseMessage:
-        """Predict messages method for compatibility"""
-        if messages:
-            text = messages[-1].content if hasattr(messages[-1], 'content') else str(messages[-1])
-            response = self.invoke(str(text))
-            return AIMessage(content=response.content)
-        return AIMessage(content="Empty message list")
-
-    async def apredict(self, text: str, **kwargs: Any) -> str:
-        """Async predict method"""
-        return self.predict(text, **kwargs)
-
-    async def apredict_messages(self, messages: List[BaseMessage], **kwargs: Any) -> BaseMessage:
-        """Async predict messages method"""
-        return self.predict_messages(messages, **kwargs)
-
-    def generate_prompt(self, prompts, **kwargs: Any) -> LLMResult:
-        """Generate from prompt objects"""
-        prompt_strings = [str(p) for p in prompts]
-        return self._generate(prompt_strings, **kwargs)
-
-    async def agenerate_prompt(self, prompts, **kwargs: Any) -> LLMResult:
-        """Async generate from prompt objects"""
-        return self.generate_prompt(prompts, **kwargs)
-
-    @property
-    def _llm_type(self) -> str:
-        """Return type of language model."""
-        return "mock_llm"
     
     def _default_patterns(self) -> Dict[str, Any]:
         """Default response patterns for different agent types"""
@@ -176,6 +167,213 @@ class MockLLM(BaseLanguageModel):
                     "due_day": 15,
                     "confidence": 0.70
                 }
+            },
+            
+            # Invoice design generation patterns
+            "invoice_design": {
+                "modern_clean": {
+                    "design_name": "Modern & Clean",
+                    "design_id": "modern_clean",
+                    "style_theme": "minimalist",
+                    "components": [
+                        {
+                            "type": "header",
+                            "props": {
+                                "title": "Invoice",
+                                "companyName": "{{PROVIDER_NAME}}",
+                                "invoiceNumber": "{{INVOICE_NUMBER}}",
+                                "date": "{{INVOICE_DATE}}"
+                            },
+                            "styling": {
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#2c3e50",
+                                "fontSize": "24px",
+                                "fontFamily": "Arial, sans-serif",
+                                "padding": "20px",
+                                "borderBottom": "2px solid #ecf0f1"
+                            }
+                        },
+                        {
+                            "type": "client_info",
+                            "props": {
+                                "clientName": "{{CLIENT_NAME}}",
+                                "providerName": "{{PROVIDER_NAME}}"
+                            },
+                            "styling": {
+                                "display": "grid",
+                                "gridTemplateColumns": "1fr 1fr",
+                                "gap": "20px",
+                                "padding": "20px"
+                            }
+                        },
+                        {
+                            "type": "line_items",
+                            "props": {
+                                "items": "{{SERVICE_ITEMS}}"
+                            },
+                            "styling": {
+                                "marginTop": "20px",
+                                "width": "100%"
+                            }
+                        },
+                        {
+                            "type": "summary",
+                            "props": {
+                                "total": "{{TOTAL_AMOUNT}}",
+                                "currency": "{{CURRENCY}}"
+                            },
+                            "styling": {
+                                "textAlign": "right",
+                                "marginTop": "20px",
+                                "padding": "15px",
+                                "backgroundColor": "#f8f9fa"
+                            }
+                        }
+                    ]
+                },
+                "classic_professional": {
+                    "design_name": "Classic & Professional", 
+                    "design_id": "classic_professional",
+                    "style_theme": "classic",
+                    "components": [
+                        {
+                            "type": "header",
+                            "props": {
+                                "title": "INVOICE",
+                                "companyName": "{{PROVIDER_NAME}}"
+                            },
+                            "styling": {
+                                "fontFamily": "Georgia, serif",
+                                "fontSize": "28px",
+                                "textAlign": "center",
+                                "border": "1px solid #ccc"
+                            }
+                        },
+                        {
+                            "type": "client_info", 
+                            "props": {
+                                "clientName": "{{CLIENT_NAME}}",
+                                "providerName": "{{PROVIDER_NAME}}"
+                            },
+                            "styling": {
+                                "fontFamily": "Georgia, serif",
+                                "padding": "25px"
+                            }
+                        },
+                        {
+                            "type": "summary",
+                            "props": {
+                                "total": "{{TOTAL_AMOUNT}}"
+                            },
+                            "styling": {
+                                "fontFamily": "Georgia, serif",
+                                "textAlign": "right"
+                            }
+                        }
+                    ]
+                },
+                "bold_creative": {
+                    "design_name": "Bold & Creative",
+                    "design_id": "bold_creative", 
+                    "style_theme": "creative",
+                    "components": [
+                        {
+                            "type": "header",
+                            "props": {
+                                "title": "Invoice",
+                                "companyName": "{{PROVIDER_NAME}}"
+                            },
+                            "styling": {
+                                "backgroundColor": "#3182ce",
+                                "color": "#ffffff",
+                                "fontFamily": "Helvetica, sans-serif",
+                                "padding": "30px",
+                                "borderRadius": "8px"
+                            }
+                        },
+                        {
+                            "type": "client_info",
+                            "props": {
+                                "clientName": "{{CLIENT_NAME}}",
+                                "providerName": "{{PROVIDER_NAME}}"
+                            },
+                            "styling": {
+                                "borderLeft": "4px solid #3182ce",
+                                "paddingLeft": "20px"
+                            }
+                        }
+                    ]
+                },
+                "three_designs": {
+                    "designs": [
+                        {
+                            "design_name": "Modern & Clean",
+                            "design_id": "modern_clean",
+                            "style_theme": "minimalist",
+                            "components": [
+                                {
+                                    "type": "header",
+                                    "props": {"title": "Invoice", "companyName": "Service Provider"},
+                                    "styling": {"backgroundColor": "#ffffff", "fontFamily": "Arial, sans-serif"}
+                                },
+                                {
+                                    "type": "client_info", 
+                                    "props": {"clientName": "Client Name", "providerName": "Provider Name"},
+                                    "styling": {"display": "grid", "gridTemplateColumns": "1fr 1fr"}
+                                },
+                                {
+                                    "type": "line_items",
+                                    "props": {"items": []},
+                                    "styling": {"width": "100%"}
+                                },
+                                {
+                                    "type": "summary",
+                                    "props": {"total": 1000, "currency": "USD"},
+                                    "styling": {"textAlign": "right"}
+                                }
+                            ]
+                        },
+                        {
+                            "design_name": "Classic & Professional",
+                            "design_id": "classic_professional",
+                            "style_theme": "classic", 
+                            "components": [
+                                {
+                                    "type": "header",
+                                    "props": {"title": "INVOICE", "companyName": "Service Provider"},
+                                    "styling": {"fontFamily": "Georgia, serif", "textAlign": "center"}
+                                },
+                                {
+                                    "type": "client_info",
+                                    "props": {"clientName": "Client Name", "providerName": "Provider Name"},
+                                    "styling": {"fontFamily": "Georgia, serif"}
+                                },
+                                {
+                                    "type": "summary", 
+                                    "props": {"total": 1000, "currency": "USD"},
+                                    "styling": {"fontFamily": "Georgia, serif", "textAlign": "right"}
+                                }
+                            ]
+                        },
+                        {
+                            "design_name": "Bold & Creative",
+                            "design_id": "bold_creative",
+                            "style_theme": "creative",
+                            "components": [
+                                {
+                                    "type": "header",
+                                    "props": {"title": "Invoice", "companyName": "Service Provider"},
+                                    "styling": {"backgroundColor": "#3182ce", "color": "#ffffff"}
+                                },
+                                {
+                                    "type": "client_info",
+                                    "props": {"clientName": "Client Name", "providerName": "Provider Name"},
+                                    "styling": {"borderLeft": "4px solid #3182ce"}
+                                }
+                            ]
+                        }
+                    ]
+                }
             }
         }
     
@@ -213,6 +411,20 @@ class MockLLM(BaseLanguageModel):
             else:
                 return json.dumps(self.response_patterns["schedule_extraction"]["quarterly"])
         
+        # Invoice design generation responses
+        if "design" in input_lower and ("ui" in input_lower or "invoice" in input_lower):
+            if "3 different" in input_text or "three designs" in input_lower:
+                return json.dumps(self.response_patterns["invoice_design"]["three_designs"])
+            elif "modern" in input_lower and "clean" in input_lower:
+                return json.dumps({"designs": [self.response_patterns["invoice_design"]["modern_clean"]]})
+            elif "classic" in input_lower and "professional" in input_lower:
+                return json.dumps({"designs": [self.response_patterns["invoice_design"]["classic_professional"]]})
+            elif "bold" in input_lower and "creative" in input_lower:
+                return json.dumps({"designs": [self.response_patterns["invoice_design"]["bold_creative"]]})
+            else:
+                # Default to three designs for any design request
+                return json.dumps(self.response_patterns["invoice_design"]["three_designs"])
+        
         # Default response
         return json.dumps({
             "status": "mock_response",
@@ -240,34 +452,34 @@ class MockLLM(BaseLanguageModel):
     
     def reset_calls(self) -> None:
         """Reset call counter and history"""
-        object.__setattr__(self, 'call_count', 0)
-        object.__setattr__(self, 'call_history', [])
+        self.call_count = 0
+        self.call_history = []
 
 
 class MockLLMFactory:
-    """Factory for creating different types of mock LLMs"""
+    """Factory for creating different types of mock Vertex AI models"""
     
     @staticmethod
-    def create_reliable_llm() -> MockLLM:
-        """Create a reliable mock LLM that never fails"""
-        return MockLLM(simulate_failures=False)
+    def create_reliable_llm() -> MockVertexAIModel:
+        """Create a reliable mock Vertex AI model that never fails"""
+        return MockVertexAIModel(simulate_failures=False)
     
     @staticmethod  
-    def create_unreliable_llm(failure_rate: float = 0.3) -> MockLLM:
-        """Create an unreliable mock LLM for testing error handling"""
-        return MockLLM(simulate_failures=True, failure_rate=failure_rate)
+    def create_unreliable_llm(failure_rate: float = 0.3) -> MockVertexAIModel:
+        """Create an unreliable mock Vertex AI model for testing error handling"""
+        return MockVertexAIModel(simulate_failures=True, failure_rate=failure_rate)
     
     @staticmethod
-    def create_custom_llm(response_patterns: Dict[str, Any]) -> MockLLM:
-        """Create mock LLM with custom response patterns"""
-        return MockLLM(response_patterns=response_patterns)
+    def create_custom_llm(response_patterns: Dict[str, Any]) -> MockVertexAIModel:
+        """Create mock Vertex AI model with custom response patterns"""
+        return MockVertexAIModel(response_patterns=response_patterns)
 
 
 def create_mock_model_function():
     """Create a mock get_model function for testing"""
-    mock_llm = MockLLMFactory.create_reliable_llm()
+    mock_model = MockLLMFactory.create_reliable_llm()
     
-    def mock_get_model():
-        return mock_llm
+    def mock_get_model(*args, **kwargs):
+        return mock_model
     
-    return mock_llm, mock_get_model
+    return mock_model, mock_get_model

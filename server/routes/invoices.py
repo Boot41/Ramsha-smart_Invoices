@@ -198,6 +198,45 @@ async def list_invoice_templates(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching templates: {str(e)}")
 
+@router.get("/{invoice_id}/adaptive-ui-designs")
+async def get_adaptive_ui_designs(invoice_id: str):
+    """Get adaptive UI designs for a specific invoice"""
+    try:
+        db_service = get_database_service()
+        invoice = await db_service.get_invoice_by_id(invoice_id)
+        
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+        
+        # Extract adaptive UI designs from invoice_data
+        invoice_data = invoice.invoice_data or {}
+        adaptive_designs = invoice_data.get('adaptive_ui_designs', {})
+        
+        if not adaptive_designs:
+            # Return empty designs structure if none found
+            return {
+                "invoice_id": invoice_id,
+                "designs": [],
+                "message": "No adaptive UI designs found for this invoice"
+            }
+        
+        # Return the designs with invoice metadata
+        return {
+            "invoice_id": invoice_id,
+            "invoice_number": invoice.invoice_number,
+            "workflow_id": invoice.workflow_id,
+            "client_name": invoice.client_name,
+            "service_provider_name": invoice.service_provider_name,
+            "designs": adaptive_designs.get("designs", []),
+            "generated_at": adaptive_designs.get("generated_at"),
+            "total_designs": len(adaptive_designs.get("designs", []))
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching adaptive UI designs: {str(e)}")
+
 # Mock Endpoints (existing)
 
 @router.post("/create_invoice")

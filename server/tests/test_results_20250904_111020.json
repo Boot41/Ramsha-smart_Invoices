@@ -1,0 +1,313 @@
+{
+  "pipeline_start": "2025-09-04T11:10:19.653188",
+  "tests_completed": {
+    "orchestrator_evaluations": {
+      "status": "failed",
+      "details": {
+        "orchestrator_evaluation": {
+          "total_tests": 14,
+          "passed": 0,
+          "failed": 14,
+          "test_results": [
+            {
+              "test_name": "initial_workflow_start",
+              "description": "Orchestrator should route new workflow to contract processing",
+              "passed": false,
+              "score": 0.0,
+              "details": "Test execution failed: 'coroutine' object has no attribute 'get'",
+              "error": "'coroutine' object has no attribute 'get'"
+            },
+            {
+              "test_name": "contract_to_validation",
+              "description": "After contract processing, should route to validation",
+              "passed": false,
+              "score": 0.0,
+              "details": "Test execution failed: 'coroutine' object has no attribute 'get'",
+              "error": "'coroutine' object has no attribute 'get'"
+            },
+            {
+              "test_name": "validation_failed_retry",
+              "description": "After validation failure, should retry processing on first attempt",
+              "passed": false,
+              "score": 0.0,
+              "details": "Test execution failed: 'coroutine' object has no attribute 'get'",
+              "error": "'coroutine' object has no attribute 'get'"
+            },
+            {
+              "test_name": "multiple_failures_escalate",
+              "description": "After multiple validation failures, should escalate to error recovery",
+              "passed": false,
+              "score": 0.0,
+              "details": "Test execution failed: 'coroutine' object has no attribute 'get'",
+              "error": "'coroutine' object has no attribute 'get'"
+            },
+            {
+              "test_name": "max_attempts_exceeded",
+              "description": "When max attempts exceeded, should complete with errors",
+              "passed": false,
+              "score": 0.0,
+              "details": "Test execution failed: 'coroutine' object has no attribute 'get'",
+              "error": "'coroutine' object has no attribute 'get'"
+            },
+            {
+              "test_name": "high_quality_approve",
+              "description": "High quality invoice should be approved for storage",
+              "passed": false,
+              "score": 0.0,
+              "details": "Test execution failed: 'coroutine' object has no attribute 'get'",
+              "error": "'coroutine' object has no attribute 'get'"
+            },
+            {
+              "test_name": "low_quality_learn_retry",
+              "description": "Low quality should trigger feedback learning",
+              "passed": false,
+              "score": 0.0,
+              "details": "Test execution failed: 'coroutine' object has no attribute 'get'",
+              "error": "'coroutine' object has no attribute 'get'"
+            },
+            {
+              "test_name": "critical_errors_recovery",
+              "description": "Critical errors should immediately route to error recovery",
+              "passed": false,
+              "score": 0.0,
+              "details": "Test execution failed: 'coroutine' object has no attribute 'get'",
+              "error": "'coroutine' object has no attribute 'get'"
+            },
+            {
+              "test_name": "successful_completion",
+              "description": "Successful storage should trigger final learning",
+              "passed": false,
+              "score": 0.0,
+              "details": "Test execution failed: 'coroutine' object has no attribute 'get'",
+              "error": "'coroutine' object has no attribute 'get'"
+            },
+            {
+              "test_name": "invoice_to_design_generation",
+              "description": "After invoice creation, should route to design generation",
+              "passed": false,
+              "score": 0.0,
+              "details": "Test execution failed: 'coroutine' object has no attribute 'get'",
+              "error": "'coroutine' object has no attribute 'get'"
+            },
+            {
+              "test_name": "design_to_quality_assurance",
+              "description": "After design generation, should route to quality assurance",
+              "passed": false,
+              "score": 0.0,
+              "details": "Test execution failed: 'coroutine' object has no attribute 'get'",
+              "error": "'coroutine' object has no attribute 'get'"
+            },
+            {
+              "test_name": "design_generation_failed",
+              "description": "Failed design generation should be handled appropriately",
+              "passed": false,
+              "score": 0.0,
+              "details": "Test execution failed: 'coroutine' object has no attribute 'get'",
+              "error": "'coroutine' object has no attribute 'get'"
+            },
+            {
+              "test_name": "complete_workflow_with_designs",
+              "description": "Complete workflow with designs and quality check should finish successfully",
+              "passed": false,
+              "score": 0.0,
+              "details": "Test execution failed: 'coroutine' object has no attribute 'get'",
+              "error": "'coroutine' object has no attribute 'get'"
+            },
+            {
+              "test_name": "unexpected_state_recovery",
+              "description": "Unexpected state should route to error recovery",
+              "passed": false,
+              "score": 0.0,
+              "details": "Test execution failed: 'coroutine' object has no attribute 'get'",
+              "error": "'coroutine' object has no attribute 'get'"
+            }
+          ],
+          "overall_score": 0.0,
+          "timestamp": "2025-09-04T11:10:19.653480"
+        },
+        "routing_function_tests": {
+          "total": 5,
+          "passed": 5,
+          "failed": 0,
+          "details": [
+            {
+              "test_name": "route_contract_processing",
+              "passed": true,
+              "expected": "contract_processing",
+              "actual": "contract_processing"
+            },
+            {
+              "test_name": "route_validation",
+              "passed": true,
+              "expected": "validation",
+              "actual": "validation"
+            },
+            {
+              "test_name": "route_error_recovery",
+              "passed": true,
+              "expected": "error_recovery",
+              "actual": "error_recovery"
+            },
+            {
+              "test_name": "route_complete_success",
+              "passed": true,
+              "expected": "__end__",
+              "actual": "__end__"
+            },
+            {
+              "test_name": "route_unknown_action",
+              "passed": true,
+              "expected": "error_recovery",
+              "actual": "error_recovery"
+            }
+          ]
+        },
+        "overall_success": false,
+        "timestamp": "2025-09-04T11:10:19.654293"
+      },
+      "timestamp": "2025-09-04T11:10:19.654303"
+    },
+    "unit_tests": {
+      "status": "failed",
+      "tests_run": 10,
+      "failures": 0,
+      "errors": 8,
+      "details": "test_langsmith_integration (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest that LangSmith integration works with mocks ... ERROR\ntest_mock_llm_call_tracking (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest that mock LLM properly tracks calls for debugging ... ok\ntest_orchestrator_consistency (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest that orchestrator makes consistent decisions with same input ... ERROR\ntest_orchestrator_decision_making (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest orchestrator decision-making logic with mocked LLM ... ERROR\ntest_orchestrator_error_handling (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest orchestrator handling of error conditions ... ERROR\ntest_orchestrator_max_attempts_logic (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest orchestrator behavior when max attempts reached ... ERROR\ntest_orchestrator_quality_based_routing (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest orchestrator routing based on quality scores ... ERROR\ntest_orchestrator_service_with_mocks (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest orchestrator service with all external dependencies mocked ... ERROR\ntest_orchestrator_state_validation (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest orchestrator handles invalid state gracefully ... ok\ntest_workflow_with_mocked_services (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest complete workflow execution with mocked external services ... ERROR\n\n======================================================================\nERROR: test_langsmith_integration (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest that LangSmith integration works with mocks\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/usr/lib/python3.10/unittest/mock.py\", line 1379, in patched\n    return func(*newargs, **newkeywargs)\n  File \"/home/ramsha/Documents/smart-invoice-scheduler/server/tests/../tests/../tests/../tests/test_orchestrator_with_mocks.py\", line 200, in test_langsmith_integration\n    self.assertIn(\"orchestrator_decision\", result)\n  File \"/usr/lib/python3.10/unittest/case.py\", line 1109, in assertIn\n    if member not in container:\nTypeError: argument of type 'coroutine' is not iterable\n\n======================================================================\nERROR: test_orchestrator_consistency (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest that orchestrator makes consistent decisions with same input\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/home/ramsha/Documents/smart-invoice-scheduler/server/tests/../tests/../tests/../tests/test_orchestrator_with_mocks.py\", line 213, in test_orchestrator_consistency\n    decision = result_state.get(\"orchestrator_decision\", {})\nAttributeError: 'coroutine' object has no attribute 'get'\n\n======================================================================\nERROR: test_orchestrator_decision_making (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest orchestrator decision-making logic with mocked LLM\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/usr/lib/python3.10/unittest/mock.py\", line 1379, in patched\n    return func(*newargs, **newkeywargs)\n  File \"/home/ramsha/Documents/smart-invoice-scheduler/server/tests/../tests/../tests/../tests/test_orchestrator_with_mocks.py\", line 50, in test_orchestrator_decision_making\n    decision = result_state.get(\"orchestrator_decision\", {})\nAttributeError: 'coroutine' object has no attribute 'get'\n\n======================================================================\nERROR: test_orchestrator_error_handling (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest orchestrator handling of error conditions\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/usr/lib/python3.10/unittest/mock.py\", line 1379, in patched\n    return func(*newargs, **newkeywargs)\n  File \"/home/ramsha/Documents/smart-invoice-scheduler/server/tests/../tests/../tests/../tests/test_orchestrator_with_mocks.py\", line 69, in test_orchestrator_error_handling\n    self.assertIn(\"orchestrator_decision\", result_state)\n  File \"/usr/lib/python3.10/unittest/case.py\", line 1109, in assertIn\n    if member not in container:\nTypeError: argument of type 'coroutine' is not iterable\n\n======================================================================\nERROR: test_orchestrator_max_attempts_logic (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest orchestrator behavior when max attempts reached\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/usr/lib/python3.10/unittest/mock.py\", line 1379, in patched\n    return func(*newargs, **newkeywargs)\n  File \"/home/ramsha/Documents/smart-invoice-scheduler/server/tests/../tests/../tests/../tests/test_orchestrator_with_mocks.py\", line 83, in test_orchestrator_max_attempts_logic\n    decision = result_state.get(\"orchestrator_decision\", {})\nAttributeError: 'coroutine' object has no attribute 'get'\n\n======================================================================\nERROR: test_orchestrator_quality_based_routing (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest orchestrator routing based on quality scores\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/usr/lib/python3.10/unittest/mock.py\", line 1379, in patched\n    return func(*newargs, **newkeywargs)\n  File \"/home/ramsha/Documents/smart-invoice-scheduler/server/tests/../tests/../tests/../tests/test_orchestrator_with_mocks.py\", line 102, in test_orchestrator_quality_based_routing\n    decision = result_state.get(\"orchestrator_decision\", {})\nAttributeError: 'coroutine' object has no attribute 'get'\n\n======================================================================\nERROR: test_orchestrator_service_with_mocks (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest orchestrator service with all external dependencies mocked\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/home/ramsha/Documents/smart-invoice-scheduler/server/tests/../tests/../tests/../tests/test_orchestrator_with_mocks.py\", line 12, in wrapper\n    return asyncio.run(func(self, *args, **kwargs))\n  File \"/usr/lib/python3.10/asyncio/runners.py\", line 33, in run\n    raise RuntimeError(\nRuntimeError: asyncio.run() cannot be called from a running event loop\n\n======================================================================\nERROR: test_workflow_with_mocked_services (tests.test_orchestrator_with_mocks.TestOrchestratorWithMocks)\nTest complete workflow execution with mocked external services\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/usr/lib/python3.10/unittest/mock.py\", line 1379, in patched\n    return func(*newargs, **newkeywargs)\n  File \"/home/ramsha/Documents/smart-invoice-scheduler/server/tests/../tests/../tests/../tests/test_orchestrator_with_mocks.py\", line 125, in test_workflow_with_mocked_services\n    workflow = InvoiceWorkflow()\nNameError: name 'InvoiceWorkflow' is not defined. Did you mean: 'run_invoice_workflow'?\n\n----------------------------------------------------------------------\nRan 10 tests in 0.012s\n\nFAILED (errors=8)\n",
+      "timestamp": "2025-09-04T11:10:19.666911"
+    },
+    "invoice_design_tests": {
+      "status": "failed",
+      "details": {
+        "evaluation_summary": {
+          "total_tests": 4,
+          "passed_tests": 4,
+          "failed_tests": 0,
+          "success_rate": 1.0,
+          "total_evaluation_time": 0.03968930244445801,
+          "timestamp": "2025-09-04T11:10:19.709136"
+        },
+        "test_results": {
+          "basic_functionality": {
+            "test_name": "basic_functionality",
+            "passed": true,
+            "details": {
+              "response_time": 0.0013878345489501953,
+              "processing_status": "success",
+              "design_generation_completed": true,
+              "design_count": 3,
+              "designs_generated": [
+                "Modern & Clean",
+                "Classic & Professional",
+                "Bold & Creative"
+              ],
+              "all_designs_present": true
+            },
+            "errors": []
+          },
+          "design_quality": {
+            "test_name": "design_quality",
+            "passed": true,
+            "details": {
+              "Modern & Clean_quality": 0.8571428571428571,
+              "Modern & Clean_completeness": 1.0,
+              "Classic & Professional_quality": 0.8571428571428571,
+              "Classic & Professional_completeness": 0.85,
+              "Bold & Creative_quality": 0.8571428571428571,
+              "Bold & Creative_completeness": 0.7,
+              "average_quality_score": 0.8571428571428571,
+              "average_completeness_score": 0.85
+            },
+            "errors": []
+          },
+          "error_handling": {
+            "test_name": "error_handling",
+            "passed": true,
+            "details": {
+              "no_data_handling": {
+                "status": "failed",
+                "has_errors": true,
+                "error_message": "No invoice data found in database for design generation"
+              },
+              "llm_failure_handling": {
+                "status": "failed",
+                "has_errors": true,
+                "error_message": "Failed to generate invoice designs: Mock LLM Failure"
+              },
+              "invalid_json_handling": {
+                "status": "failed",
+                "has_errors": true,
+                "error_message": "Failed to generate invoice designs: Invalid JSON response from LLM: Expecting value: line 1 column 1 (char 0)"
+              },
+              "all_error_cases_handled": true
+            },
+            "errors": []
+          },
+          "performance": {
+            "test_name": "performance",
+            "passed": true,
+            "details": {
+              "total_requests": 15,
+              "successful_requests": 15,
+              "failed_requests": 0,
+              "success_rate": 1.0,
+              "average_response_time": 0.0010950883229573567,
+              "total_execution_time": 0.01700878143310547,
+              "requests_per_second": 881.8973927670311
+            },
+            "errors": []
+          }
+        },
+        "performance_metrics": {
+          "total_tests": 4,
+          "passed_tests": 4,
+          "failed_tests": 0,
+          "average_response_time": 0.0010950883229573567,
+          "design_quality_scores": [
+            0.8571428571428571,
+            0.8571428571428571,
+            0.8571428571428571
+          ],
+          "component_completeness_scores": [
+            1.0,
+            0.85,
+            0.7
+          ]
+        },
+        "overall_assessment": "EXCELLENT: All tests passed. InvoiceDesignAgent is performing optimally.",
+        "recommendations": [
+          "System is performing well. Consider monitoring for continued optimal performance."
+        ]
+      },
+      "timestamp": "2025-09-04T11:10:19.709968"
+    },
+    "performance_tests": {
+      "status": "passed",
+      "execution_time": 0.2680041790008545,
+      "details": "test_orchestrator_memory_usage (tests.test_orchestrator_with_mocks.TestOrchestratorPerformance)\nTest orchestrator doesn't have memory leaks ... ok\ntest_orchestrator_performance (tests.test_orchestrator_with_mocks.TestOrchestratorPerformance)\nTest orchestrator performance with mocked LLM ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.268s\n\nOK\n",
+      "timestamp": "2025-09-04T11:10:19.998156"
+    },
+    "e2e_workflow": {
+      "status": "failed",
+      "workflow_id": "9818b003-2cf5-46da-b6a4-a2c4f5893406",
+      "execution_time": 0.0010645389556884766,
+      "response_status": "in_progress",
+      "attempt_count": 0,
+      "quality_score": 0.0,
+      "llm_calls": 0,
+      "timestamp": "2025-09-04T11:10:20.000464"
+    },
+    "api_integration_tests": {
+      "status": "failed",
+      "details": {
+        "tests_run": 8,
+        "failures": 8,
+        "errors": 0
+      },
+      "timestamp": "2025-09-04T11:10:20.034026"
+    }
+  },
+  "overall_status": "running",
+  "errors": [
+    "Integration tests: "
+  ]
+}

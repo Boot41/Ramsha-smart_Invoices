@@ -6,8 +6,8 @@ from decimal import Decimal
 from .base_agent import BaseAgent
 from schemas.workflow_schemas import WorkflowState, AgentType, ProcessingStatus
 from schemas.contract_schemas import ContractInvoiceData
+from schemas.unified_invoice_schemas import UnifiedInvoiceData
 from services.database_service import get_database_service
-from services.internal_http_client import get_internal_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -44,20 +44,21 @@ class CorrectionAgent(BaseAgent):
             self.logger.info(f'🔧 Starting invoice correction and JSON generation for workflow {workflow_id}')
         
         try:
-            # Extract invoice data from state
-            invoice_data = self._extract_invoice_data_from_state(state)
+            # Extract unified invoice data from state
+            unified_invoice_data = self._extract_unified_invoice_data_from_state(state)
             
-            if not invoice_data:
-                raise ValueError("No invoice data found in workflow state for correction")
+            if not unified_invoice_data:
+                raise ValueError("No unified invoice data found in workflow state for correction")
             
             # Apply corrections and generate final invoice JSON
-            corrected_invoice_json = await self._generate_corrected_invoice_json(
-                invoice_data=invoice_data,
+            corrected_invoice_json = await self._generate_corrected_invoice_json_unified(
+                unified_invoice_data=unified_invoice_data,
                 state=state
             )
             
             # Store corrected invoice data for invoice_generator_agent to save
             state["final_invoice"] = corrected_invoice_json  # Store for invoice_generator_agent
+            state["unified_invoice_data_final"] = unified_invoice_data.model_dump()  # Store final unified data
             self.logger.info("✅ Invoice correction completed - data prepared for database save")
             
             # Store final invoice JSON in state
@@ -101,95 +102,119 @@ class CorrectionAgent(BaseAgent):
             
             return state
     
-    def _extract_invoice_data_from_state(self, state: WorkflowState) -> Optional[Dict[str, Any]]:
-        """Extract the most up-to-date invoice data from workflow state"""
+    def _extract_unified_invoice_data_from_state(self, state: WorkflowState) -> Optional[UnifiedInvoiceData]:
+        """Extract the most up-to-date unified invoice data from workflow state"""
         
         # Priority order: 
-        # 1. Data after validation with human input
-        # 2. Raw processed data from validation results
-        # 3. Original contract processing output
+        # 1. Unified invoice data (new format)
+        # 2. Convert from legacy formats if needed
+        
+        # First check if we have unified invoice data
+        unified_data = state.get("unified_invoice_data")
+        if unified_data:
+            try:
+                return UnifiedInvoiceData(**unified_data)
+            except Exception as e:
+                self.logger.warning(f"Failed to load unified invoice data: {str(e)}")
+        
+        # Check for final unified data
+        unified_final_data = state.get("unified_invoice_data_final")
+        if unified_final_data:
+            try:
+                return UnifiedInvoiceData(**unified_final_data)
+            except Exception as e:
+                self.logger.warning(f"Failed to load final unified invoice data: {str(e)}")
+        
+        # Fallback: convert from legacy formats
+        self.logger.info("No unified data found, attempting conversion from legacy formats")
+        
+        # Try to extract legacy data
+        legacy_data = None
         
         # First check if we have human-corrected data
         if "human_input_resolved" in state and state["human_input_resolved"]:
             invoice_data = state.get("invoice_data")
             if invoice_data and isinstance(invoice_data, dict):
                 if "invoice_response" in invoice_data and "invoice_data" in invoice_data["invoice_response"]:
-                    return invoice_data["invoice_response"]["invoice_data"]
+                    legacy_data = invoice_data["invoice_response"]["invoice_data"]
                 elif "invoice_data" in invoice_data:
-                    return invoice_data["invoice_data"]
+                    legacy_data = invoice_data["invoice_data"]
         
         # Check validation results for processed data
-        validation_results = state.get("validation_results")
-        if validation_results and validation_results.get("is_valid"):
-            # If validation passed, use the validated data
-            contract_data = state.get("contract_data")
-            if contract_data:
-                return contract_data
+        if not legacy_data:
+            validation_results = state.get("validation_results")
+            if validation_results and validation_results.get("is_valid"):
+                # If validation passed, use the validated data
+                contract_data = state.get("contract_data")
+                if contract_data:
+                    legacy_data = contract_data
         
         # Fallback to original processed data
-        invoice_data = state.get("invoice_data")
-        if invoice_data:
-            if isinstance(invoice_data, dict):
-                if "invoice_response" in invoice_data and "invoice_data" in invoice_data["invoice_response"]:
-                    return invoice_data["invoice_response"]["invoice_data"]
-                return invoice_data
+        if not legacy_data:
+            invoice_data = state.get("invoice_data")
+            if invoice_data:
+                if isinstance(invoice_data, dict):
+                    if "invoice_response" in invoice_data and "invoice_data" in invoice_data["invoice_response"]:
+                        legacy_data = invoice_data["invoice_response"]["invoice_data"]
+                    else:
+                        legacy_data = invoice_data
+        
+        # Convert legacy data to unified format
+        if legacy_data:
+            try:
+                unified_data = UnifiedInvoiceData.from_legacy_format(legacy_data)
+                self.logger.info("✅ Successfully converted legacy data to unified format")
+                return unified_data
+            except Exception as e:
+                self.logger.error(f"❌ Failed to convert legacy data to unified format: {str(e)}")
         
         return None
     
-    async def _generate_corrected_invoice_json(self, invoice_data: Dict[str, Any], state: WorkflowState) -> Dict[str, Any]:
-        """Generate the final corrected invoice JSON with all business rules applied"""
+    async def _generate_corrected_invoice_json_unified(self, unified_invoice_data: UnifiedInvoiceData, state: WorkflowState) -> Dict[str, Any]:
+        """Generate the final corrected invoice JSON using unified invoice data"""
         
         workflow_id = state.get('workflow_id')
         contract_name = state.get('contract_name', 'Unknown Contract')
         user_id = state.get('user_id', 'Unknown User')
         
-        # Create base invoice structure
-        corrected_invoice = {
-            "invoice_header": {
-                "invoice_id": f"INV-{workflow_id[:8]}-{datetime.now().strftime('%Y%m%d')}",
-                "invoice_date": datetime.now().strftime('%Y-%m-%d'),
-                "due_date": self._calculate_due_date(invoice_data),
-                "contract_reference": contract_name,
-                "workflow_id": workflow_id,
-                "generated_at": datetime.now().isoformat()
-            },
-            "parties": {
-                "client": self._format_party_data(invoice_data.get("client", {}), "client"),
-                "service_provider": self._format_party_data(invoice_data.get("service_provider", {}), "service_provider")
-            },
-            "contract_details": {
-                "contract_type": invoice_data.get("contract_type", "service_agreement"),
-                "start_date": invoice_data.get("start_date"),
-                "end_date": invoice_data.get("end_date"),
-                "effective_date": invoice_data.get("effective_date")
-            },
-            "payment_information": self._format_payment_terms(invoice_data.get("payment_terms", {})),
-            "services_and_items": self._format_services(invoice_data.get("services", [])),
-            "invoice_schedule": {
-                "frequency": invoice_data.get("invoice_frequency", "monthly"),
-                "first_invoice_date": invoice_data.get("first_invoice_date"),
-                "next_invoice_date": invoice_data.get("next_invoice_date")
-            },
-            "additional_terms": {
-                "special_terms": invoice_data.get("special_terms"),
-                "notes": invoice_data.get("notes"),
-                "late_fee_policy": self._generate_late_fee_policy(invoice_data.get("payment_terms", {}))
-            },
-            "totals": self._calculate_invoice_totals(invoice_data),
-            "metadata": {
-                "generated_by": "smart_invoice_scheduler",
-                "agent_version": "1.0.0",
-                "user_id": user_id,
-                "confidence_score": self._calculate_confidence_score(invoice_data, state),
-                "quality_score": self._calculate_quality_score(invoice_data, state),
-                "human_input_applied": state.get("human_input_resolved", False),
-                "validation_score": state.get("validation_results", {}).get("validation_score", 0.0),
-                "processing_time_seconds": self._calculate_processing_time(state)
-            }
-        }
+        # Update metadata in unified data
+        unified_invoice_data.metadata.workflow_id = workflow_id
+        unified_invoice_data.metadata.user_id = user_id
+        unified_invoice_data.metadata.updated_at = datetime.now()
         
-        # Apply business rules and validations
-        corrected_invoice = await self._apply_business_rules(corrected_invoice, state)
+        # Set invoice dates if not set
+        if not unified_invoice_data.invoice_date:
+            unified_invoice_data.invoice_date = datetime.now().strftime('%Y-%m-%d')
+        
+        if not unified_invoice_data.due_date:
+            unified_invoice_data.due_date = self._calculate_due_date_unified(unified_invoice_data)
+        
+        # Set contract reference
+        if not unified_invoice_data.contract_reference:
+            unified_invoice_data.contract_reference = contract_name
+        
+        # Update scores and metadata
+        unified_invoice_data.metadata.confidence_score = self._calculate_confidence_score_unified(unified_invoice_data, state)
+        unified_invoice_data.metadata.quality_score = self._calculate_quality_score_unified(unified_invoice_data, state)
+        unified_invoice_data.metadata.human_input_applied = state.get("human_input_resolved", False)
+        unified_invoice_data.metadata.validation_score = state.get("validation_results", {}).get("validation_score", 0.0)
+        unified_invoice_data.metadata.processing_time_seconds = self._calculate_processing_time(state)
+        
+        # Calculate totals if not set
+        if not unified_invoice_data.totals or unified_invoice_data.totals.total_amount == 0:
+            unified_invoice_data.totals = self._calculate_invoice_totals_unified(unified_invoice_data)
+        
+        # Generate late fee policy if not set
+        if not unified_invoice_data.late_fee_policy and unified_invoice_data.payment_terms:
+            unified_invoice_data.late_fee_policy = self._generate_late_fee_policy_unified(unified_invoice_data.payment_terms)
+        
+        # Apply business rules to unified data
+        unified_invoice_data = await self._apply_business_rules_unified(unified_invoice_data, state)
+        
+        # Convert to the database/correction agent format
+        corrected_invoice = unified_invoice_data.to_database_format()
+        
+        self.logger.info(f"✅ Generated corrected invoice JSON using unified format for {contract_name}")
         
         return corrected_invoice
     
@@ -246,11 +271,14 @@ class CorrectionAgent(BaseAgent):
         
         return formatted_services
     
-    def _calculate_due_date(self, invoice_data: Dict[str, Any]) -> str:
-        """Calculate invoice due date based on payment terms"""
-    
+    def _calculate_due_date_unified(self, unified_data: UnifiedInvoiceData) -> str:
+        """Calculate invoice due date based on payment terms from unified data"""
+        from datetime import timedelta
         
-        due_days = invoice_data.get("payment_terms", {}).get("due_days", 30)
+        due_days = 30  # default
+        if unified_data.payment_terms and unified_data.payment_terms.due_days:
+            due_days = unified_data.payment_terms.due_days
+        
         try:
             due_date = datetime.now() + timedelta(days=int(due_days))
             return due_date.strftime('%Y-%m-%d')
@@ -279,8 +307,8 @@ class CorrectionAgent(BaseAgent):
             "total_amount": base_amount
         }
     
-    def _calculate_confidence_score(self, invoice_data: Dict[str, Any], state: WorkflowState) -> float:
-        """Calculate confidence score for the corrected invoice"""
+    def _calculate_confidence_score_unified(self, unified_data: UnifiedInvoiceData, state: WorkflowState) -> float:
+        """Calculate confidence score for the corrected invoice using unified data"""
         base_confidence = 0.7
         
         # Boost confidence if human input was provided
@@ -292,22 +320,18 @@ class CorrectionAgent(BaseAgent):
         if validation_results.get("is_valid"):
             base_confidence += 0.1
         
+        # Boost confidence based on data completeness in unified format
+        completeness_score = self._calculate_data_completeness_unified(unified_data)
+        base_confidence += completeness_score * 0.1
+        
         return min(1.0, base_confidence)
     
-    def _calculate_quality_score(self, invoice_data: Dict[str, Any], state: WorkflowState) -> float:
-        """Calculate quality score based on data completeness and accuracy"""
+    def _calculate_quality_score_unified(self, unified_data: UnifiedInvoiceData, state: WorkflowState) -> float:
+        """Calculate quality score based on data completeness and accuracy using unified data"""
         base_quality = 0.6
         
-        # Check required fields completeness
-        required_fields = ["client.name", "service_provider.name", "payment_terms.amount", "payment_terms.currency"]
-        completed_fields = 0
-        
-        for field_path in required_fields:
-            value = self._get_nested_field(invoice_data, field_path)
-            if value is not None and str(value).strip():
-                completed_fields += 1
-        
-        completeness_score = completed_fields / len(required_fields)
+        # Check required fields completeness using unified format
+        completeness_score = self._calculate_data_completeness_unified(unified_data)
         base_quality += completeness_score * 0.3
         
         # Boost quality if validation passed
@@ -341,33 +365,71 @@ class CorrectionAgent(BaseAgent):
                 pass
         return 0.0
     
-    async def _apply_business_rules(self, invoice_json: Dict[str, Any], state: WorkflowState) -> Dict[str, Any]:
-        """Apply business rules and final validations to the invoice JSON"""
+    async def _apply_business_rules_unified(self, unified_data: UnifiedInvoiceData, state: WorkflowState) -> UnifiedInvoiceData:
+        """Apply business rules and final validations to the unified invoice data"""
         
         # Business Rule 1: Ensure minimum amount
-        payment_info = invoice_json.get("payment_information", {})
-        if payment_info.get("amount", 0) < 1:
-            self.logger.warning("Invoice amount is less than $1, setting to minimum $1")
-            invoice_json["payment_information"]["amount"] = 1.0
-            invoice_json["totals"]["subtotal"] = 1.0
-            invoice_json["totals"]["total_amount"] = 1.0
+        if unified_data.payment_terms and unified_data.payment_terms.amount:
+            amount = float(unified_data.payment_terms.amount)
+            if amount < 1:
+                self.logger.warning("Invoice amount is less than $1, setting to minimum $1")
+                unified_data.payment_terms.amount = 1.0
+                if unified_data.totals:
+                    unified_data.totals.subtotal = 1.0
+                    unified_data.totals.total_amount = 1.0
         
         # Business Rule 2: Validate currency
-        valid_currencies = ["USD", "EUR", "INR", "GBP", "CAD", "AUD"]
-        if payment_info.get("currency") not in valid_currencies:
-            self.logger.warning(f"Invalid currency {payment_info.get('currency')}, defaulting to USD")
-            invoice_json["payment_information"]["currency"] = "USD"
+        if unified_data.payment_terms:
+            from schemas.unified_invoice_schemas import CurrencyCode
+            valid_currencies = [c.value for c in CurrencyCode]
+            if unified_data.payment_terms.currency.value not in valid_currencies:
+                self.logger.warning(f"Invalid currency {unified_data.payment_terms.currency}, defaulting to USD")
+                unified_data.payment_terms.currency = CurrencyCode.USD
         
         # Business Rule 3: Ensure invoice ID uniqueness
-        invoice_id = invoice_json["invoice_header"]["invoice_id"]
-        invoice_json["invoice_header"]["invoice_id"] = f"{invoice_id}-{int(datetime.now().timestamp())}"
+        if unified_data.invoice_id:
+            unified_data.invoice_id = f"{unified_data.invoice_id}-{int(datetime.now().timestamp())}"
+            unified_data.invoice_number = unified_data.invoice_id
         
-        # Business Rule 4: Add compliance notes
-        invoice_json["compliance"] = {
-            "generated_under": "Automated Smart Invoice Scheduler",
-            "human_reviewed": state.get("human_input_resolved", False),
-            "validation_passed": state.get("validation_results", {}).get("is_valid", False),
-            "compliance_version": "1.0"
-        }
+        # Business Rule 4: Update status and metadata
+        from schemas.unified_invoice_schemas import InvoiceStatus
+        unified_data.status = InvoiceStatus.CORRECTED
+        unified_data.metadata.human_reviewed = state.get("human_input_resolved", False)
         
-        return invoice_json
+        return unified_data
+    
+    def _calculate_data_completeness_unified(self, unified_data: UnifiedInvoiceData) -> float:
+        """Calculate data completeness score for unified invoice data"""
+        required_fields = [
+            unified_data.client and unified_data.client.name,
+            unified_data.service_provider and unified_data.service_provider.name,
+            unified_data.payment_terms and unified_data.payment_terms.amount,
+            unified_data.payment_terms and unified_data.payment_terms.currency
+        ]
+        
+        completed_fields = sum(1 for field in required_fields if field)
+        return completed_fields / len(required_fields)
+    
+    def _calculate_invoice_totals_unified(self, unified_data: UnifiedInvoiceData):
+        """Calculate invoice totals from unified data"""
+        from schemas.unified_invoice_schemas import UnifiedInvoiceTotals
+        
+        base_amount = 0.0
+        if unified_data.payment_terms and unified_data.payment_terms.amount:
+            base_amount = float(unified_data.payment_terms.amount)
+        
+        return UnifiedInvoiceTotals(
+            subtotal=base_amount,
+            tax_amount=0.0,
+            discount_amount=0.0,
+            late_fee_amount=0.0,
+            total_amount=base_amount
+        )
+    
+    def _generate_late_fee_policy_unified(self, payment_terms) -> Optional[str]:
+        """Generate late fee policy text from unified payment terms"""
+        if payment_terms and payment_terms.late_fee and float(payment_terms.late_fee) > 0:
+            return f"Late fee of ${float(payment_terms.late_fee):.2f} applies for payments received after due date"
+        return "No late fee specified"
+    
+    # Invoice saving removed - now handled by invoice_generator_agent

@@ -9,30 +9,55 @@ import os
 import sys
 import subprocess
 import argparse
+import asyncio
+import unittest
 
 # Add server directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+# Import all modules at top level
+from tests.test_pipeline import TestPipeline
+from tests.test_orchestrator_with_mocks import TestOrchestratorWithMocks
+from agents.orchestrator_agent import OrchestratorAgent
+from workflows.invoice_workflow import run_invoice_workflow, initialize_workflow_state
+from tests.mock_llm import MockLLMFactory
+from tests.orchestrator_evals import OrchestratorEvalRunner
+
+# Try to import design evaluations (optional)
+try:
+    from tests.invoice_design_evals import InvoiceDesignEvalRunner
+    DESIGN_EVALS_AVAILABLE = True
+except ImportError:
+    DESIGN_EVALS_AVAILABLE = False
+
+# Try to import coverage
+try:
+    import coverage
+    COVERAGE_AVAILABLE = True
+except ImportError:
+    coverage = None
+    COVERAGE_AVAILABLE = False
+
 def install_coverage():
     """Install coverage package if not available"""
-    try:
-        import coverage
+    global coverage, COVERAGE_AVAILABLE
+    if COVERAGE_AVAILABLE:
         return True
-    except ImportError:
-        print("📦 Installing coverage package...")
-        try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "coverage"])
-            return True
-        except subprocess.CalledProcessError:
-            print("❌ Failed to install coverage package")
-            return False
+    
+    print("📦 Installing coverage package...")
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "coverage"])
+        import coverage
+        COVERAGE_AVAILABLE = True
+        return True
+    except subprocess.CalledProcessError:
+        print("❌ Failed to install coverage package")
+        return False
 
 def run_with_coverage(test_command, source_dirs=None):
     """Run tests with coverage reporting"""
     if not install_coverage():
         return 1
-    
-    import coverage
     
     # Default source directories
     if source_dirs is None:
@@ -98,28 +123,44 @@ def run_with_coverage(test_command, source_dirs=None):
 def run_evaluations_with_coverage():
     """Run evaluations with coverage"""
     def test_command():
-        from tests.orchestrator_evals import OrchestratorEvalRunner
+        # Run orchestrator evaluations
         print("🎯 Running Orchestrator Evaluations with Coverage...")
         
-        runner = OrchestratorEvalRunner()
-        results = runner.run_comprehensive_evaluation()
+        orchestrator_runner = OrchestratorEvalRunner()
+        orchestrator_results = orchestrator_runner.run_comprehensive_evaluation()
         
-        success = results.get('overall_success', False)
-        print(f"📊 Evaluation Results: {'✅ PASSED' if success else '❌ FAILED'}")
+        orchestrator_success = orchestrator_results.get('overall_success', False)
+        print(f"📊 Orchestrator Results: {'✅ PASSED' if orchestrator_success else '❌ FAILED'}")
         
-        return 0 if success else 1
+        # Run invoice design evaluations
+        design_success = True
+        if DESIGN_EVALS_AVAILABLE:
+            try:
+                print("🎨 Running Invoice Design Evaluations with Coverage...")
+                
+                design_runner = InvoiceDesignEvalRunner()
+                design_results = design_runner.run_comprehensive_evaluation()
+                
+                design_success = design_results['evaluation_summary']['success_rate'] >= 0.8
+                print(f"📊 Design Agent Results: {'✅ PASSED' if design_success else '❌ FAILED'}")
+                
+            except Exception as e:
+                print(f"❌ Invoice design evaluations failed: {str(e)}")
+                design_success = False
+        else:
+            print("⚠️  Invoice design evaluations skipped: Module not available")
+        
+        overall_success = orchestrator_success and design_success
+        return 0 if overall_success else 1
     
     return run_with_coverage(test_command)
 
 def run_unit_tests_with_coverage():
     """Run unit tests with coverage"""
     def test_command():
-        import unittest
-        from tests.test_orchestrator_with_mocks import TestOrchestratorWithMocks
-        
         print("🧪 Running Unit Tests with Coverage...")
         
-        # Create test suite  
+        # Create test suite
         loader = unittest.TestLoader()
         suite = loader.loadTestsFromTestCase(TestOrchestratorWithMocks)
         
@@ -140,9 +181,6 @@ def run_unit_tests_with_coverage():
 def run_pipeline_with_coverage():
     """Run full pipeline with coverage"""
     def test_command():
-        import asyncio
-        from tests.test_pipeline import TestPipeline
-        
         print("🚀 Running Full Pipeline with Coverage...")
         
         async def run_pipeline():
@@ -165,14 +203,10 @@ def run_quick_tests_with_coverage():
         print("⚡ Running Quick Tests with Coverage...")
         
         try:
-            # Import tests
-            from agents.orchestrator_agent import OrchestratorAgent
-            from workflows.invoice_workflow import InvoiceWorkflow, initialize_workflow_state
-            from tests.mock_llm import MockLLMFactory
-            
             # Basic functionality test
             orchestrator = OrchestratorAgent()
-            workflow = InvoiceWorkflow()
+            # Test workflow function exists
+            assert callable(run_invoice_workflow)
             mock_llm = MockLLMFactory.create_reliable_llm()
             
             # Test orchestrator
