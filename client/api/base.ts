@@ -41,7 +41,14 @@ async function apiFetch<T>(
   if (!response.ok) {
     // Handle HTTP errors
     const errorData = await response.json().catch(() => ({ message: response.statusText }));
-    throw new Error(errorData.detail || errorData.message || 'API request failed');
+    
+    // Create a custom error that preserves the response structure
+    const apiError = new Error(errorData.detail || errorData.message || 'API request failed');
+    (apiError as any).response = {
+      status: response.status,
+      data: errorData
+    };
+    throw apiError;
   }
 
   // For successful responses, try to parse JSON, but handle cases with no content

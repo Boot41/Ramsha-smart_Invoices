@@ -29,7 +29,43 @@ class InvoiceGeneratorAgent(BaseAgent):
         self.logger.info(f"📄 Starting invoice creation for workflow_id: {workflow_id}")
         
         try:
-            # Extract invoice data from state
+            # Check for unified invoice data in priority order
+            unified_invoice_data = (
+                state.get("unified_invoice_data_final") or 
+                state.get("unified_invoice_data")
+            )
+            
+            if unified_invoice_data:
+                self.logger.info(f"📋 Using unified invoice data for database storage")
+                # Use the unified data format for database storage
+                from schemas.unified_invoice_schemas import UnifiedInvoiceData
+                
+                try:
+                    unified_data = UnifiedInvoiceData(**unified_invoice_data)
+                    # Ensure workflow metadata is set
+                    unified_data.metadata.workflow_id = workflow_id
+                    unified_data.metadata.user_id = state.get("user_id", "unknown")
+                    
+                    invoice = await self.db_service.create_invoice_from_unified(unified_data)
+                    
+                    if invoice:
+                        state["invoice_id"] = invoice.id
+                        state["invoice_number"] = invoice.invoice_number
+                        state["invoice_uuid"] = str(invoice.id)  # Use database ID as UUID reference
+                        state["processing_status"] = ProcessingStatus.SUCCESS.value
+                        
+                        self.logger.info(f"✅ Invoice created using unified format: {invoice.invoice_number}")
+                        return state
+                    else:
+                        raise Exception("Failed to create invoice from unified data")
+                        
+                except Exception as e:
+                    self.logger.error(f"❌ Failed to create invoice from unified data: {str(e)}")
+                    # Fall through to legacy method
+                    pass
+            
+            # Fallback: Extract invoice data using legacy method
+            self.logger.info(f"📋 Falling back to legacy invoice data extraction")
             invoice_data = self._extract_invoice_data(state)
             if not invoice_data:
                 raise ValueError("No invoice data found for database creation")
@@ -169,9 +205,20 @@ class InvoiceGeneratorAgent(BaseAgent):
             return state
     
     def _extract_invoice_data(self, state: WorkflowState) -> Dict[str, Any]:
-        """Extract invoice data from state"""
+        """Extract invoice data from state - prioritizing unified format"""
         
-        # Try final invoice first (from correction agent)
+        # Try unified format first
+        if state.get("unified_invoice_data"):
+            unified_data = state["unified_invoice_data"]
+            # Convert to legacy format for backward compatibility
+            from schemas.unified_invoice_schemas import UnifiedInvoiceData
+            try:
+                unified_obj = UnifiedInvoiceData(**unified_data)
+                return unified_obj.to_legacy_contract_invoice_data()
+            except Exception as e:
+                self.logger.warning(f"Failed to convert unified data: {e}")
+        
+        # Try final invoice (from correction agent)
         if state.get("final_invoice"):
             return state["final_invoice"]
         

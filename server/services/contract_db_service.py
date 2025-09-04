@@ -251,6 +251,87 @@ class ContractDatabaseService:
             logger.error(f"❌ Failed to save extracted invoice data: {str(e)}")
             raise
     
+    async def save_corrected_invoice_data(
+        self,
+        contract_id: str,
+        corrected_data: Dict[str, Any],
+        corrected_by_human: bool = False
+    ) -> ExtractedInvoiceData:
+        """
+        Save corrected invoice data from the correction agent
+        
+        Args:
+            contract_id: Contract ID
+            corrected_data: Complete corrected invoice data
+            corrected_by_human: Whether the correction involved human input
+            
+        Returns:
+            Updated ExtractedInvoiceData object
+        """
+        try:
+            logger.info(f"💾 Saving corrected invoice data for contract: {contract_id}")
+            
+            async with AsyncSessionLocal() as session:
+                # Get existing extracted invoice data
+                stmt = select(ExtractedInvoiceData).where(ExtractedInvoiceData.contract_id == contract_id)
+                result = await session.execute(stmt)
+                extracted_data = result.scalar_one_or_none()
+                
+                if not extracted_data:
+                    logger.warning(f"No existing extracted invoice data found for contract {contract_id}, creating new record")
+                    # Create new record if none exists
+                    extracted_data = ExtractedInvoiceData(
+                        contract_id=contract_id,
+                        user_id=corrected_data.get('metadata', {}).get('user_id', 'unknown')
+                    )
+                    session.add(extracted_data)
+                
+                # Serialize the corrected data to ensure proper JSON formatting
+                def serialize_for_json(obj):
+                    """Recursively serialize objects for JSON storage"""
+                    if hasattr(obj, 'model_dump'):  # Pydantic models
+                        return obj.model_dump()
+                    elif hasattr(obj, '__dict__'):  # Regular objects
+                        return {k: serialize_for_json(v) for k, v in obj.__dict__.items() if not k.startswith('_')}
+                    elif isinstance(obj, (datetime, date)):
+                        return obj.isoformat()
+                    elif isinstance(obj, list):
+                        return [serialize_for_json(item) for item in obj]
+                    elif isinstance(obj, dict):
+                        return {k: serialize_for_json(v) for k, v in obj.items()}
+                    elif hasattr(obj, 'value'):  # Enum values
+                        return obj.value
+                    else:
+                        return obj
+                
+                # Update the corrected invoice data
+                extracted_data.corrected_invoice_data = serialize_for_json(corrected_data)
+                extracted_data.correction_timestamp = datetime.now(timezone.utc)
+                extracted_data.corrected_by_human = corrected_by_human
+                
+                # Update other fields if available in corrected data
+                if 'payment_terms' in corrected_data and corrected_data['payment_terms']:
+                    payment_terms = corrected_data['payment_terms']
+                    if payment_terms.get('amount'):
+                        try:
+                            extracted_data.payment_amount = float(payment_terms['amount'])
+                        except (ValueError, TypeError):
+                            pass
+                    if payment_terms.get('currency'):
+                        extracted_data.currency = str(payment_terms['currency'])
+                    if payment_terms.get('due_days'):
+                        extracted_data.payment_due_days = int(payment_terms['due_days'])
+                
+                await session.commit()
+                await session.refresh(extracted_data)
+                
+                logger.info(f"✅ Saved corrected invoice data for contract {contract_id}")
+                return extracted_data
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to save corrected invoice data: {str(e)}")
+            raise
+    
     async def get_contract_by_storage_path(self, storage_path: str) -> Optional[Contract]:
         """
         Get contract by storage path

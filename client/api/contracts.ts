@@ -93,12 +93,55 @@ export interface ContractQueryResponse {
   generated_at: string;
 }
 
+export interface MCPContract {
+  file_id: string;
+  name: string;
+  mime_type: string;
+  gdrive_uri: string;
+  processing_result?: ContractProcessResponse;
+  processed: boolean;
+  processing_error?: string;
+  source: 'mcp';
+}
+
+export interface MCPSyncResponse {
+  status: string;
+  message: string;
+  contracts: MCPContract[];
+  total_count: number;
+  processed_count: number;
+  sync_only: boolean;
+  processing_note?: string;
+  mcp_benefits_used: string[];
+}
+
+export interface MCPRentalContract extends MCPContract {
+  contract_type: 'rental_lease';
+}
+
+export interface MCPRentalSyncResponse extends MCPSyncResponse {
+  contracts: MCPRentalContract[];
+  contract_type_focus: 'rental_lease';
+  rental_specific_features: string[];
+}
+
 
 export interface StartWorkflowResponse {
   workflow_id: string;
   status: string;
   message: string;
   received_at: string;
+}
+
+export interface ContractDownloadResponse {
+  download_url: string;
+  expires_at: string;
+}
+
+export interface StartAgenticWorkflowRequest {
+  user_id: string;
+  contract_name: string;
+  contract_path?: string;
 }
 
 export class ContractsApi {
@@ -189,6 +232,45 @@ export class ContractsApi {
   }
 
   /**
+   * Start agentic workflow for an existing contract
+   */
+  static async startAgenticWorkflow(
+    request: StartAgenticWorkflowRequest
+  ): Promise<StartWorkflowResponse> {
+    const formData = new FormData();
+    formData.append('user_id', request.user_id);
+    formData.append('contract_name', request.contract_name);
+    formData.append('max_attempts', '3');
+    formData.append('options', JSON.stringify({ 
+      existing_contract: true, 
+      contract_path: request.contract_path 
+    }));
+    
+    // Create a dummy file to indicate existing contract
+    const dummyFile = new Blob([''], { type: 'application/pdf' });
+    formData.append('contract_file', dummyFile, 'existing_contract.pdf');
+
+    return apiClient.post<StartWorkflowResponse>(
+      API_ENDPOINTS.ORCHESTRATOR.START_INVOICE_WORKFLOW,
+      formData,
+      { isMultipart: true }
+    );
+  }
+
+  /**
+   * Get download URL for a contract
+   */
+  static async getContractDownloadUrl(
+    userId: string,
+    contractPath: string,
+    expiresInHours: number = 1
+  ): Promise<ContractDownloadResponse> {
+    return apiClient.get<ContractDownloadResponse>(
+      API_ENDPOINTS.CONTRACTS.GET_DOWNLOAD_URL(userId, contractPath) + `?expires_in_hours=${expiresInHours}`
+    );
+  }
+
+  /**
    * Check health status of contract processing service
    */
   static async healthCheck(): Promise<{
@@ -208,6 +290,56 @@ export class ContractsApi {
     static async getContracts(userId: string): Promise<any> {
       return apiClient.get(API_ENDPOINTS.CONTRACTS.GET_CONTRACTS(userId));
     }
+
+  /**
+   * Sync contracts from Google Drive using MCP (sync only by default)
+   */
+  static async syncMCPContracts(
+    userId?: string,
+    query?: string,
+    processFiles = false
+  ): Promise<MCPSyncResponse> {
+    const params = new URLSearchParams({
+      process_files: processFiles.toString(),
+    });
+    
+    if (userId) {
+      params.append('user_id', userId);
+    }
+    
+    if (query) {
+      params.append('query', query);
+    }
+
+    return apiClient.get<MCPSyncResponse>(
+      `${API_ENDPOINTS.MCP.SYNC_CONTRACTS}?${params.toString()}`
+    );
+  }
+
+  /**
+   * Sync rental contracts specifically from Google Drive using MCP (sync only by default)
+   */
+  static async syncMCPRentalContracts(
+    userId?: string,
+    query?: string,
+    processFiles = false
+  ): Promise<MCPRentalSyncResponse> {
+    const params = new URLSearchParams({
+      process_files: processFiles.toString(),
+    });
+    
+    if (userId) {
+      params.append('user_id', userId);
+    }
+    
+    if (query) {
+      params.append('query', query);
+    }
+
+    return apiClient.get<MCPRentalSyncResponse>(
+      `${API_ENDPOINTS.MCP.SYNC_RENTAL_CONTRACTS}?${params.toString()}`
+    );
+  }
 }
 
 // ✅ Export instance methods (like authApi)
@@ -217,6 +349,10 @@ export const contractsApi = {
   queryContract: ContractsApi.queryContract.bind(ContractsApi),
   processAndGenerateInvoice: ContractsApi.processAndGenerateInvoice.bind(ContractsApi),
   startInvoiceWorkflow: ContractsApi.startInvoiceWorkflow.bind(ContractsApi),
+  startAgenticWorkflow: ContractsApi.startAgenticWorkflow.bind(ContractsApi),
+  getContractDownloadUrl: ContractsApi.getContractDownloadUrl.bind(ContractsApi),
   healthCheck: ContractsApi.healthCheck.bind(ContractsApi),
   getContracts: ContractsApi.getContracts.bind(ContractsApi),
+  syncMCPContracts: ContractsApi.syncMCPContracts.bind(ContractsApi),
+  syncMCPRentalContracts: ContractsApi.syncMCPRentalContracts.bind(ContractsApi),
 };

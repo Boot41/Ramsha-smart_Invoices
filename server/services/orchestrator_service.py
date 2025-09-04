@@ -49,6 +49,13 @@ class OrchestratorService:
                 workflow_id=workflow_id
             )
             
+            # Add options to state (contains contract_path for existing contracts)
+            if request.options:
+                self.logger.info(f"📋 Adding options to state: {request.options}")
+                state.update(request.options)
+            else:
+                self.logger.warning("⚠️ No options provided in request")
+            
             # Store in active workflows
             self.active_workflows[workflow_id] = {
                 "state": state,

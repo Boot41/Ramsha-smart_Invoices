@@ -1,4 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, File, UploadFile, Form
+from pydantic import BaseModel
 from typing import Optional, Dict, Any
 import logging
 import json
@@ -20,17 +21,21 @@ async def start_invoice_workflow(
     contract_name: str = Form(...),
     max_attempts: int = Form(3),
     options: Optional[str] = Form(default='{}'),
-    contract_file: UploadFile = File(...),
+    contract_file: Optional[UploadFile] = File(None),
     current_user: dict = Depends(get_current_user)
 ):
     """
     🚀 Start a new agentic invoice processing workflow
     
-    This endpoint initiates the complete agentic workflow by accepting form-data
-    including the contract file.
+    This endpoint initiates the complete agentic workflow by accepting form-data.
+    Can handle both new contracts (with file upload) and existing contracts (without file).
     """
     import json
-    file_bytes = await contract_file.read()
+    
+    # Handle file upload for new contracts or None for existing contracts
+    file_bytes = None
+    if contract_file and contract_file.filename != 'existing_contract.pdf':
+        file_bytes = await contract_file.read()
     
     try:
         options_dict = json.loads(options)
@@ -52,6 +57,47 @@ async def start_invoice_workflow(
         request.user_id = current_user["user_id"]
     
     return await orchestrator_controller.start_invoice_workflow(request, background_tasks)
+
+
+class StartAgenticWorkflowRequest(BaseModel):
+    user_id: str
+    contract_name: str
+    contract_path: Optional[str] = None
+    max_attempts: int = 3
+    options: Optional[Dict[str, Any]] = None
+
+@router.post("/workflow/invoice/start-for-contract", response_model=WorkflowResponse)
+async def start_agentic_workflow_for_existing_contract(
+    request: StartAgenticWorkflowRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    🚀 Start agentic workflow for existing contract
+    
+    This endpoint starts the agentic invoice processing workflow for a contract
+    that's already uploaded/processed in the system.
+    """
+    options = request.options or {}
+
+    logger.info(f"🎯 API: Starting agentic workflow for existing contract - User: {request.user_id}, Contract: {request.contract_name}")
+    
+    # Ensure user can only start workflows for themselves (unless admin)
+    user_id = request.user_id
+    if not current_user.get("is_admin", False):
+        user_id = current_user["user_id"]
+    
+    # For existing contracts, we can pass None as contract_file since the contract
+    # is already processed/available in the system
+    workflow_request = WorkflowRequest(
+        user_id=user_id,
+        contract_name=request.contract_name,
+        contract_file=None,  # Will be handled differently for existing contracts
+        max_attempts=request.max_attempts,
+        options={**options, "existing_contract": True, "contract_path": request.contract_path}
+    )
+    
+    return await orchestrator_controller.start_invoice_workflow(workflow_request, background_tasks)
 
 
 

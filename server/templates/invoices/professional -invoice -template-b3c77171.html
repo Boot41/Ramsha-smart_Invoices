@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Invoice {{INVOICE_NUMBER}}</title>
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            text-align: left;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #eee;
+        }
+
+        .header h1 {
+            color: #0056b3;
+            margin-bottom: 5px;
+        }
+
+        .invoice-info {
+            margin-top: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .invoice-info p {
+            margin: 5px 0;
+        }
+
+        .billing-info {
+            margin-top: 30px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .billing-info div {
+            width: 48%;
+        }
+
+        .billing-info h3 {
+            margin-bottom: 10px;
+            color: #0056b3;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f5f5f5;
+            color: #333;
+        }
+
+        .totals {
+            margin-top: 20px;
+            text-align: right;
+        }
+
+        .totals p {
+            margin: 5px 0;
+            font-weight: bold;
+        }
+
+        .payment-terms {
+            margin-top: 30px;
+            font-style: italic;
+            color: #777;
+        }
+
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 2px solid #eee;
+            text-align: center;
+            color: #777;
+        }
+
+        .status-badge {
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            color: white;
+        }
+
+        .status-generated {
+            background-color: #4CAF50; /* Green */
+        }
+
+        .status-paid {
+            background-color: #4CAF50; /* Green */
+        }
+
+        .status-unpaid {
+            background-color: #f44336; /* Red */
+        }
+
+        .status-overdue {
+            background-color: #f44336; /* Red */
+        }
+
+        @media print {
+            body {
+                margin: 0;
+                padding: 0;
+            }
+
+            .container {
+                border: none;
+                box-shadow: none;
+            }
+
+            .header {
+                border-bottom: 2px solid #000;
+            }
+
+            .footer {
+                border-top: 2px solid #000;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{PROVIDER_NAME}}</h1>
+            <p>{{PROVIDER_ADDRESS}}</p>
+        </div>
+
+        <div class="invoice-info">
+            <div>
+                <p><strong>Invoice Number:</strong> {{INVOICE_NUMBER}}</p>
+                <p><strong>Invoice Date:</strong> {{INVOICE_DATE}}</p>
+                <p><strong>Due Date:</strong> {{DUE_DATE}}</p>
+            </div>
+            <div>
+                <span class="status-badge status-{{STATUS}}">{{STATUS}}</span>
+            </div>
+        </div>
+
+        <div class="billing-info">
+            <div>
+                <h3>Bill To:</h3>
+                <p><strong>{{CLIENT_NAME}}</strong></p>
+                <p>{{CLIENT_ADDRESS}}</p>
+            </div>
+            <div>
+                <h3>Bill From:</h3>
+                <p><strong>{{PROVIDER_NAME}}</strong></p>
+                <p>{{PROVIDER_ADDRESS}}</p>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th>Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{SERVICE_ITEMS}}
+            </tbody>
+        </table>
+
+        <div class="totals">
+            <p><strong>Total:</strong> ${{TOTAL_AMOUNT}}</p>
+        </div>
+
+        <div class="payment-terms">
+            <p>{{PAYMENT_TERMS}}</p>
+        </div>
+
+        <div class="footer">
+            <p>Thank you for your business!</p>
+        </div>
+    </div>
+</body>
+</html>

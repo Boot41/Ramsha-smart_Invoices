@@ -10,6 +10,8 @@ class ProcessingStatus(str, Enum):
     FAILED = "failed"
     NEEDS_RETRY = "needs_retry"
     NEEDS_HUMAN_INPUT = "needs_human_input"
+    PAUSED_FOR_HUMAN_INPUT = "PAUSED_FOR_HUMAN_INPUT"
+    PAUSED_FOR_VALIDATION = "PAUSED_FOR_VALIDATION"
     COMPLETED = "completed"
 
 class AgentType(str, Enum):
@@ -29,7 +31,7 @@ class AgentType(str, Enum):
 class WorkflowState(TypedDict):
     """LangGraph state for the agentic workflow"""
     # Core Data
-    contract_file: bytes
+    contract_file: Optional[bytes]
     user_id: str
     contract_name: str
     contract_data: Optional[Dict[str, Any]]
@@ -64,7 +66,7 @@ class WorkflowState(TypedDict):
 class WorkflowRequest(BaseModel):
     """Request to start the invoice workflow"""
     user_id: str = Field(..., description="User ID")
-    contract_file: bytes = Field(..., description="Contract file content as bytes")
+    contract_file: Optional[bytes] = Field(None, description="Contract file content as bytes (None for existing contracts)")
     contract_name: str = Field(..., description="Name of the contract")
     max_attempts: int = Field(default=3, description="Maximum retry attempts")
     options: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional options")

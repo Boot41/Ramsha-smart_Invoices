@@ -44,7 +44,25 @@ class OrchestratorController:
             self.logger.error(f"❌ Controller: Validation error: {str(e)}")
             raise HTTPException(status_code=400, detail=f"Invalid request: {str(e)}")
             
+        except HTTPException as http_e:
+            # Re-raise HTTP exceptions (including OAuth errors)
+            raise http_e
         except Exception as e:
+            # Import the OAuth error class
+            from services.mcp_service import OAuthExpiredError
+            
+            # Check for OAuth expiration error
+            if isinstance(e, OAuthExpiredError):
+                raise HTTPException(
+                    status_code=401,
+                    detail={
+                        "error": "oauth_expired",
+                        "message": "Google Drive authentication has expired. Please re-authenticate.",
+                        "requires_auth": True,
+                        "auth_url": "/auth/google-drive"
+                    }
+                )
+            
             self.logger.error(f"❌ Controller: Failed to start workflow: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
     
@@ -171,8 +189,11 @@ class OrchestratorController:
         if not request.contract_name or not request.contract_name.strip():
             raise ValueError("contract_name is required and cannot be empty")
         
-        if not request.contract_file:
-            raise ValueError("contract_file is required")
+        # Check if this is for an existing contract (has existing_contract option)
+        is_existing_contract = request.options and request.options.get("existing_contract", False)
+        
+        if not request.contract_file and not is_existing_contract:
+            raise ValueError("contract_file is required for new contracts")
         
         if request.max_attempts <= 0 or request.max_attempts > 10:
             raise ValueError("max_attempts must be between 1 and 10")

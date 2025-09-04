@@ -492,6 +492,11 @@ class ExtractedInvoiceData(Base):
     extraction_query = Column(Text, nullable=True)
     raw_ai_response = Column(Text, nullable=True)
     
+    # Corrected invoice data (JSONB for full structured data)
+    corrected_invoice_data = Column(JSON, nullable=True)  # Full corrected invoice data from correction agent
+    correction_timestamp = Column(DateTime(timezone=True), nullable=True)
+    corrected_by_human = Column(Boolean, nullable=False, default=False)
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

@@ -11,9 +11,44 @@ from agents.ui_invoice_generator_agent import UIInvoiceGeneratorAgent
 from middleware.auth import get_current_user
 import logging
 from datetime import datetime
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/validation", tags=["validation"])
+
+# Define expected data structure models for clear documentation
+class PartyData(BaseModel):
+    """Expected party (client/service_provider) data structure"""
+    name: str
+    email: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    tax_id: Optional[str] = None
+
+class PaymentTermsData(BaseModel):
+    """Expected payment terms data structure"""
+    amount: Optional[float] = None
+    currency: Optional[str] = "USD"
+    frequency: Optional[str] = None
+    due_days: Optional[int] = 30
+    late_fee: Optional[float] = None
+    discount_terms: Optional[str] = None
+    payment_method: Optional[str] = "bank_transfer"
+
+class ExpectedCorrectedData(BaseModel):
+    """Expected structure for corrected_data field"""
+    client: Optional[PartyData] = None
+    service_provider: Optional[PartyData] = None
+    payment_terms: Optional[PaymentTermsData] = None
+    contract_title: Optional[str] = None
+    contract_type: Optional[str] = None
+    notes: Optional[str] = None
+
+class DataFormatResponse(BaseModel):
+    """Response showing expected data format"""
+    expected_format: Dict[str, Any]
+    example: Dict[str, Any]
+    notes: list
 
 class ValidationRequirementsResponse(BaseModel):
     """Response containing validation requirements for human input"""
@@ -77,9 +112,11 @@ async def get_validation_requirements(
         human_input_request = workflow_state.get("human_input_request", {})
         validation_results = workflow_state.get("validation_results", {})
         
-        # Get current extracted data for context
+        # Get current extracted data for context - prioritize unified format
         current_data = {}
-        if "invoice_data" in workflow_state:
+        if "unified_invoice_data" in workflow_state:
+            current_data = workflow_state["unified_invoice_data"]
+        elif "invoice_data" in workflow_state:
             invoice_data = workflow_state["invoice_data"]
             if isinstance(invoice_data, dict) and "invoice_response" in invoice_data:
                 current_data = invoice_data["invoice_response"].get("invoice_data", {})
@@ -102,6 +139,73 @@ async def get_validation_requirements(
             status_code=500,
             detail=f"Failed to get validation requirements: {str(e)}"
         )
+
+@router.get("/format", response_model=DataFormatResponse)
+async def get_expected_data_format():
+    """
+    Get the expected JSON format for corrected_data when resuming workflows
+    
+    Use this to understand exactly what structure to send in the corrected_data field
+    when calling POST /api/v1/validation/resume
+    """
+    expected_format = {
+        "client": {
+            "name": "string (required)",
+            "email": "string (optional)",
+            "address": "string (optional)", 
+            "phone": "string (optional)",
+            "tax_id": "string (optional)"
+        },
+        "service_provider": {
+            "name": "string (required)",
+            "email": "string (optional)",
+            "address": "string (optional)",
+            "phone": "string (optional)", 
+            "tax_id": "string (optional)"
+        },
+        "payment_terms": {
+            "amount": "number (optional)",
+            "currency": "string (optional, default: USD)",
+            "frequency": "string (optional, e.g., monthly, quarterly)",
+            "due_days": "number (optional, default: 30)",
+            "late_fee": "number (optional)",
+            "discount_terms": "string (optional)",
+            "payment_method": "string (optional, default: bank_transfer)"
+        },
+        "contract_title": "string (optional)",
+        "contract_type": "string (optional)",
+        "notes": "string (optional)"
+    }
+    
+    example = {
+        "client": {
+            "name": "test"
+        },
+        "service_provider": {
+            "name": "user"
+        },
+        "payment_terms": {
+            "amount": 1000,
+            "currency": "INR",
+            "frequency": "monthly"
+        }
+    }
+    
+    notes = [
+        "Only include fields that you want to correct/update",
+        "The correction agent will merge your corrections with existing data",
+        "All fields are optional - only send what needs to be changed",
+        "Nested objects (client, service_provider, payment_terms) will be merged deeply",
+        "Currency codes should be standard 3-letter codes (USD, EUR, INR, etc.)",
+        "Frequency values: monthly, quarterly, annually, weekly, one_time",
+        "Amount can be sent as number or string - will be converted appropriately"
+    ]
+    
+    return DataFormatResponse(
+        expected_format=expected_format,
+        example=example,
+        notes=notes
+    )
 
 @router.post("/resume", response_model=ResumeWorkflowResponse)
 async def resume_workflow_with_corrections(
@@ -141,20 +245,56 @@ async def resume_workflow_with_corrections(
         
         # Update state with human corrections
         logger.info(f"📝 Applying human corrections: {list(request.corrected_data.keys())}")
+        logger.info(f"🔍 Full corrected data: {request.corrected_data}")
         
-        # Merge corrected data into invoice data
+        # Apply corrections to unified format first, then maintain legacy format
+        from schemas.unified_invoice_schemas import UnifiedInvoiceData
+        
+        # Apply corrections to unified data if available
+        if "unified_invoice_data" in workflow_state:
+            try:
+                unified_data = UnifiedInvoiceData(**workflow_state["unified_invoice_data"])
+                corrected_unified = unified_data.apply_manual_corrections(request.corrected_data)
+                workflow_state["unified_invoice_data"] = corrected_unified.model_dump()
+                logger.info(f"✅ Applied corrections to unified invoice data")
+            except Exception as e:
+                logger.error(f"❌ Failed to apply corrections to unified data: {e}")
+        
+        # Maintain legacy format for backward compatibility
         if "invoice_data" in workflow_state:
             invoice_data = workflow_state["invoice_data"]
+            logger.info(f"📊 Original invoice_data structure: {list(invoice_data.keys()) if isinstance(invoice_data, dict) else type(invoice_data)}")
+            
             if isinstance(invoice_data, dict) and "invoice_response" in invoice_data:
                 # Update the invoice data with corrections
                 current_invoice_data = invoice_data["invoice_response"].get("invoice_data", {})
+                logger.info(f"📋 Before update - current invoice data keys: {list(current_invoice_data.keys()) if isinstance(current_invoice_data, dict) else type(current_invoice_data)}")
+                
+                # Apply human corrections to the current invoice data
                 current_invoice_data.update(request.corrected_data)
+                logger.info(f"✅ After update - current invoice data keys: {list(current_invoice_data.keys()) if isinstance(current_invoice_data, dict) else type(current_invoice_data)}")
+                
+                # Update the nested structure
                 invoice_data["invoice_response"]["invoice_data"] = current_invoice_data
                 
-                # Mark as human-corrected
+                # Mark as human-corrected with metadata
                 current_invoice_data["human_corrected"] = True
                 current_invoice_data["human_corrections_applied_at"] = datetime.now().isoformat()
                 current_invoice_data["user_notes"] = request.user_notes
+                
+                # Also update the root level to ensure consistency
+                workflow_state["invoice_data"] = invoice_data
+                
+                # Store a clean copy for the correction agent to use
+                workflow_state["human_corrected_data"] = {
+                    "invoice_data": current_invoice_data,
+                    "human_corrected": True,
+                    "corrections_applied_at": datetime.now().isoformat(),
+                    "user_notes": request.user_notes,
+                    "corrected_fields": list(request.corrected_data.keys())
+                }
+                
+                logger.info(f"📋 Stored human corrected data with {len(request.corrected_data)} corrections")
         
         # Update workflow state for resumption
         workflow_state["awaiting_human_input"] = False
@@ -162,7 +302,10 @@ async def resume_workflow_with_corrections(
         workflow_state["processing_status"] = "IN_PROGRESS"
         workflow_state["current_agent"] = "correction"
         workflow_state["human_input_completed"] = True
+        workflow_state["human_input_resolved"] = True  # Add this flag for correction agent
         workflow_state["last_updated_at"] = datetime.now().isoformat()
+        
+        logger.info(f"✅ Workflow state updated with human_input flags: completed={workflow_state.get('human_input_completed')}, resolved={workflow_state.get('human_input_resolved')}")
         
         # Remove pause-related flags
         workflow_state.pop("pause_reason", None)

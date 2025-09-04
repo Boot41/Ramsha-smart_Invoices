@@ -281,6 +281,60 @@ class WorkflowAPIService {
   }
 
   /**
+   * Submit validation corrections and resume workflow
+   * Uses the unified JSON format for corrected data
+   */
+  async submitValidationCorrections(
+    workflowId: string, 
+    correctedData: Record<string, any>, 
+    userNotes: string = ''
+  ): Promise<any> {
+    try {
+      const response = await fetch(`http://localhost:8000/api/v1/validation/resume`, {
+        method: 'POST',
+        headers: await this.getAuthHeaders(),
+        body: JSON.stringify({
+          workflow_id: workflowId,
+          corrected_data: correctedData,
+          user_notes: userNotes
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to submit validation corrections: ${response.status} ${errorText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('❌ Error submitting validation corrections:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get validation requirements for a workflow
+   */
+  async getValidationRequirements(workflowId: string): Promise<any> {
+    try {
+      const response = await fetch(`http://localhost:8000/api/v1/validation/requirements/${workflowId}`, {
+        method: 'GET',
+        headers: await this.getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to get validation requirements: ${response.status} ${errorText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('❌ Error getting validation requirements:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get current user ID from localStorage or JWT token
    */
   getCurrentUserId(): string {

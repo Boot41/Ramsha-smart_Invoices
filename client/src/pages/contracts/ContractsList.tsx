@@ -24,15 +24,28 @@ const ContractsList: React.FC = () => {
   const { setWorkflowId } = useInvoiceStore();
   const {
     contracts,
+    mcpContracts,
+    allContracts,
     fetchContracts,
-    isLoading
+    syncMCPContracts,
+    startAgenticWorkflow,
+    isLoading,
+    isSyncingMCP,
+    error,
+    mcpError,
+    lastMCPSync,
+    clearError,
+    clearMCPError
   } = useContractStore();
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isRefreshingAuth, setIsRefreshingAuth] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
 
   // Workflow popup state
@@ -40,95 +53,111 @@ const ContractsList: React.FC = () => {
   const [contractName, setContractName] = useState<string>('');
   const [showWorkflowPopup, setShowWorkflowPopup] = useState(false);
   const [workflowMessages, setWorkflowMessages] = useState<any[]>([]);
-  const [workflowSocket, setWorkflowSocket] = useState<WebSocket | null>(null);
   const [workflowStatus, setWorkflowStatus] = useState<any>(null);
   const [humanInputRequired, setHumanInputRequired] = useState<any | null>(null);
+  const [isPaused, setIsPaused] = useState(false);
 
-  // Enhanced WebSocket connection for workflow updates
+  // Polling mechanism for workflow status when WebSocket is not available
   useEffect(() => {
     if (currentWorkflowId) {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = process.env.NODE_ENV === 'development' ? 'localhost:8000' : window.location.host;
-      const wsUrl = `${protocol}//${host}/api/v1/orchestrator/ws/workflow/${currentWorkflowId}/realtime`;
-      
-      console.log('🔗 Connecting to WebSocket:', wsUrl);
-      const ws = new WebSocket(wsUrl);
+      let pollInterval: NodeJS.Timeout;
+      let isPolling = true;
 
-      ws.onopen = () => {
-        console.log('Workflow WebSocket connected');
-        setWorkflowSocket(ws);
-      };
+      const pollWorkflowStatus = async () => {
+        try {
+          const response = await fetch(`http://localhost:8000/api/v1/orchestrator/workflow/${currentWorkflowId}/status`, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+            }
+          });
 
-      ws.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        setWorkflowMessages(prev => [...prev, { ...message, timestamp: new Date().toISOString() }]);
-
-        // Enhanced message handling for better validation pausing
-        console.log('📨 WebSocket message received:', message.type, message.data);
-        
-        switch (message.type) {
-          case 'human_input_required':
-          case 'human_input_needed':
-            console.log('🚨 Human input required - setting up form...', message.data);
-            setHumanInputRequired(message.data);
-            setIsPaused(true);
-            setWorkflowStatus(prev => ({ ...prev, processing_status: 'needs_human_input' }));
-            break;
-          
-          case 'status_update':
-          case 'agent_transition':
-          case 'agent_started':
-            console.log('🔄 Status update:', message.data);
-            setWorkflowStatus(message.data);
-            break;
-          
-          case 'workflow_complete':
-          case 'workflow_completed':
-            console.log('✅ Workflow completed');
-            setWorkflowStatus({ ...message.data, status: 'completed' });
-            setIsPaused(false);
-            break;
-          
-          case 'workflow_error':
-          case 'error':
-            console.log('❌ Workflow error:', message.data);
-            setWorkflowStatus({ ...message.data, status: 'error' });
-            setIsPaused(false);
-            break;
-          
-          case 'input_processed':
-          case 'human_input_processed':
-            console.log('✅ Human input processed - resuming workflow');
-            setHumanInputRequired(null);
-            setIsPaused(false);
-            break;
+          if (response.ok) {
+            const statusData = await response.json();
+            console.log('🔄 Workflow status:', statusData);
+            
+            // Update workflow status
+            setWorkflowStatus(statusData);
+            
+            // Check if workflow is paused for validation
+            if (statusData.status === 'paused_for_validation' || 
+                statusData.processing_status === 'paused_for_validation' ||
+                statusData.current_agent === 'paused_for_validation') {
+              
+              console.log('🚨 Workflow paused for validation - fetching requirements...');
+              
+              try {
+                // Fetch validation requirements
+                const validationResponse = await fetch(`http://localhost:8000/api/v1/validation/requirements/${currentWorkflowId}`, {
+                  headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+                  }
+                });
+                
+                if (validationResponse.ok) {
+                  const validationData = await validationResponse.json();
+                  console.log('📋 Validation data fetched:', validationData);
+                  
+                  // Stop polling
+                  isPolling = false;
+                  clearInterval(pollInterval);
+                  
+                  // Close the workflow popup
+                  setShowWorkflowPopup(false);
+                  
+                  // Navigate to validation page
+                  navigate(`/invoiceData/${currentWorkflowId}`, {
+                    state: {
+                      workflowId: currentWorkflowId,
+                      validationData: validationData,
+                      contractName: contractName
+                    }
+                  });
+                }
+              } catch (validationError) {
+                console.error('Failed to fetch validation requirements:', validationError);
+              }
+            }
+            
+            // Check if workflow is completed
+            if (statusData.status === 'completed' || statusData.processing_status === 'completed') {
+              console.log('✅ Workflow completed');
+              isPolling = false;
+              clearInterval(pollInterval);
+              setIsPaused(false);
+            }
+            
+            // Check if workflow has error
+            if (statusData.status === 'error' || statusData.processing_status === 'error') {
+              console.log('❌ Workflow error');
+              isPolling = false;
+              clearInterval(pollInterval);
+              setIsPaused(false);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch workflow status:', error);
         }
       };
 
-      ws.onclose = () => {
-        console.log('Workflow WebSocket disconnected');
-        setWorkflowSocket(null);
-      };
+      // Start polling every 3 seconds
+      pollInterval = setInterval(() => {
+        if (isPolling) {
+          pollWorkflowStatus();
+        }
+      }, 3000);
 
-      ws.onerror = (error) => {
-        console.error('Workflow WebSocket error:', error);
-      };
+      // Initial poll
+      pollWorkflowStatus();
 
       return () => {
-        ws.close();
+        isPolling = false;
+        clearInterval(pollInterval);
       };
     }
-  }, [currentWorkflowId]);
+  }, [currentWorkflowId, navigate, contractName]);
 
-  // Cleanup WebSocket on component unmount
-  useEffect(() => {
-    return () => {
-      if (workflowSocket) {
-        workflowSocket.close();
-      }
-    };
-  }, [workflowSocket]);
 
+  // Load contracts on component mount
   React.useEffect(() => {
     let userId = user?.id;
     if (userId) {
@@ -137,45 +166,81 @@ const ContractsList: React.FC = () => {
       userId = localStorage.getItem('userId') || '';
     }
     if (userId) {
-      console.log('Calling fetchContracts with userId:', userId);
-      fetchContracts(userId);
+      console.log('Loading contracts for user:', userId);
+      Promise.all([
+        fetchContracts(userId).catch(console.error),
+        syncMCPContracts(userId).catch(console.error)
+      ]);
     } else {
       console.error('No userId available for fetchContracts');
     }
-  }, [user?.id, fetchContracts]);
+  }, [user?.id, fetchContracts, syncMCPContracts]);
 
   const statusOptions: SelectOption[] = [
     { value: '', label: 'All Statuses' },
     { value: 'active', label: 'Active' },
     { value: 'pending_signature', label: 'Pending Signature' },
     { value: 'expired', label: 'Expired' },
-    { value: 'terminated', label: 'Terminated' }
+    { value: 'terminated', label: 'Terminated' },
+    { value: 'processed', label: 'Processed' },
+    { value: 'failed', label: 'Failed' }
   ];
 
-  const propertyTypeOptions: SelectOption[] = [
-    { value: '', label: 'All Property Types' },
-    { value: 'apartment', label: 'Apartment' },
-    { value: 'house', label: 'House' },
-    { value: 'condo', label: 'Condo' },
-    { value: 'townhouse', label: 'Townhouse' }
+  const sourceOptions: SelectOption[] = [
+    { value: '', label: 'All Sources' },
+    { value: 'manual', label: '📄 Manual Upload' },
+    { value: 'mcp', label: '☁️ Google Drive (MCP)' }
   ];
 
-  const filteredAgreements = contracts.filter((agreement: any) => {
-    const matchesSearch = (agreement.propertyTitle?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-      (agreement.tenantName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-      (agreement.propertyAddress?.toLowerCase() || '').includes(searchTerm.toLowerCase());
-    const matchesStatus = !statusFilter || agreement.status === statusFilter;
-    return matchesSearch && matchesStatus;
+  const filteredContracts = allContracts.filter((contract: any) => {
+    const searchFields = [
+      contract.propertyTitle,
+      contract.tenantName, 
+      contract.propertyAddress,
+      contract.name,
+      contract.contract_name,
+      contract.client_name,
+      contract.service_type,
+      contract.contract_title
+    ].filter(Boolean);
+    
+    const matchesSearch = !searchTerm || 
+      searchFields.some(field => 
+        field?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    
+    const matchesStatus = !statusFilter || contract.status === statusFilter || 
+      (contract.processed && statusFilter === 'processed') ||
+      (contract.processing_error && statusFilter === 'failed');
+      
+    const matchesSource = !sourceFilter || contract.source === sourceFilter;
+    
+    return matchesSearch && matchesStatus && matchesSource;
   });
 
-  const getStatusBadgeVariant = (status: string) => {
-    switch (status) {
+  const getStatusBadgeVariant = (contract: any) => {
+    if (contract.source === 'mcp') {
+      if (contract.processed) return 'success';
+      if (contract.processing_error) return 'error';
+      return 'warning';
+    }
+    
+    switch (contract.status) {
       case 'active': return 'success';
       case 'pending_signature': return 'warning';
       case 'expired': return 'error';
       case 'terminated': return 'secondary';
       default: return 'secondary';
     }
+  };
+
+  const getStatusText = (contract: any) => {
+    if (contract.source === 'mcp') {
+      if (contract.processed) return 'Processed';
+      if (contract.processing_error) return 'Failed';
+      return 'Synced';
+    }
+    return contract.status ? contract.status.replace('_', ' ') : 'Unknown';
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -224,42 +289,66 @@ const ContractsList: React.FC = () => {
     }
   };
 
+  const handleSyncGoogleDrive = async () => {
+    const userId = user?.id || localStorage.getItem('userId') || '';
+    if (!userId) {
+      console.error('No user ID available for sync');
+      return;
+    }
+    
+    try {
+      await syncMCPContracts(userId, 'contract OR agreement', true);
+    } catch (error) {
+      console.error('Sync failed:', error);
+    }
+  };
+
+  const handleRefreshAuth = async () => {
+    setIsRefreshingAuth(true);
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/auth/google-drive', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        setUploadSuccess(data.message);
+        // Clear success message after 5 seconds
+        setTimeout(() => setUploadSuccess(null), 5000);
+      } else {
+        setUploadError(data.message || 'Failed to refresh Google Drive authentication');
+        // Clear error message after 5 seconds
+        setTimeout(() => setUploadError(null), 5000);
+      }
+    } catch (error: any) {
+      console.error('Failed to refresh Google Drive auth:', error);
+      setUploadError('Failed to refresh Google Drive authentication');
+      setTimeout(() => setUploadError(null), 5000);
+    } finally {
+      setIsRefreshingAuth(false);
+    }
+  };
+
   // Enhanced workflow popup handlers
   const handleHumanInputSubmit = async (fieldValues: Record<string, any>, userNotes: string) => {
     console.log('📝 Submitting human input:', fieldValues, userNotes);
     
     try {
-      // Try WebSocket first (real-time)
-      if (workflowSocket && workflowSocket.readyState === WebSocket.OPEN) {
-        const message = {
-          type: 'human_input_submission',
-          data: {
-            field_values: fieldValues,
-            user_notes: userNotes,
-            workflow_id: currentWorkflowId,
-            action: 'resume_workflow'
-          }
-        };
-        workflowSocket.send(JSON.stringify(message));
-        console.log('✅ Human input submitted via WebSocket', message);
+      // Use REST API for human input submission
+      if (currentWorkflowId) {
+        await workflowAPI.submitHumanInput(currentWorkflowId, fieldValues, userNotes);
+        console.log('✅ Human input submitted via HTTP API');
         
-        // Immediately update UI to show processing resuming
+        // Update UI state
         setHumanInputRequired(null);
         setIsPaused(false);
-        setWorkflowStatus(prev => ({ ...prev, processing_status: 'processing' }));
-        
-      } else {
-        // Fallback to HTTP API if WebSocket is not available
-        console.log('🔄 WebSocket not available, using HTTP API fallback...');
-        if (currentWorkflowId) {
-          await workflowAPI.submitHumanInput(currentWorkflowId, fieldValues, userNotes);
-          console.log('✅ Human input submitted via HTTP API');
-          
-          // Update UI state
-          setHumanInputRequired(null);
-          setIsPaused(false);
-          setWorkflowStatus(prev => ({ ...prev, processing_status: 'processing' }));
-        }
+        setWorkflowStatus((prev: any) => ({ ...prev, processing_status: 'processing' }));
       }
       
     } catch (error) {
@@ -270,16 +359,8 @@ const ContractsList: React.FC = () => {
 
   const handleHumanInputCancel = () => {
     setHumanInputRequired(null);
-    // Optionally send a cancellation message to the workflow
-    if (workflowSocket && workflowSocket.readyState === WebSocket.OPEN) {
-      const message = {
-        type: 'human_input_cancelled',
-        data: {
-          message: 'User cancelled human input'
-        }
-      };
-      workflowSocket.send(JSON.stringify(message));
-    }
+    // Human input cancelled - no API call needed for cancellation
+    console.log('📝 Human input cancelled by user');
   };
 
   const handleWorkflowPopupClose = () => {
@@ -308,10 +389,86 @@ const ContractsList: React.FC = () => {
     navigate('/invoices/templates');
   };
 
-  const handleSelectContract = (agreement: any) => {
-    // This function is not used in the current workflow
-    // but we can keep it for future use.
-    console.log('Selected contract:', agreement);
+  const handleSelectContract = (contract: any) => {
+    console.log('Selected contract:', contract);
+    // You can implement contract selection logic here
+  };
+
+  const handleStartAgenticWorkflow = async (contract: any) => {
+    const userId = user?.id || localStorage.getItem('userId') || '';
+    if (!userId) {
+      console.error('No user ID available for starting agentic workflow');
+      return;
+    }
+
+    try {
+      console.log('Starting agentic workflow for contract:', contract);
+      
+      const contractName = contract.name || 
+                        contract.contract_name || 
+                        contract.contract_title || 
+                        contract.propertyTitle || 
+                        contract.title || 
+                        contract.filename || 
+                        contract.file_name ||
+                        contract.document_name ||
+                        contract.id ||
+                        'Untitled Contract';
+      const contractPath = contract.file_path || 
+                          contract.path || 
+                          contract.gdrive_uri || 
+                          contract.url || 
+                          contract.file_id ||
+                          contract.document_id ||
+                          contractName;
+      
+      console.log('🔍 Debug contract data:', {
+        contract,
+        contractName,
+        contractPath,
+        file_path: contract.file_path,
+        path: contract.path,
+        gdrive_uri: contract.gdrive_uri
+      });
+      
+      const result = await startAgenticWorkflow(userId, contractName, contractPath);
+      
+      // Set workflow state for UI
+      setWorkflowId(result.workflow_id);
+      setCurrentWorkflowId(result.workflow_id);
+      setContractName(contractName);
+      
+      // Reset workflow UI state
+      setWorkflowMessages([]);
+      setWorkflowStatus(null);
+      setHumanInputRequired(null);
+      
+      // Show workflow popup
+      setShowWorkflowPopup(true);
+      
+      console.log('Agentic workflow started successfully:', result);
+    } catch (error) {
+      console.error('Failed to start agentic workflow:', error);
+    }
+  };
+
+  const getContractIcon = (contract: any) => {
+    if (contract.source === 'mcp') {
+      return (
+        <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+          <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </div>
+      );
+    }
+    return (
+      <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      </div>
+    );
   };
 
   return (
@@ -319,20 +476,73 @@ const ContractsList: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Service Agreements</h1>
-          <p className="text-slate-600 mt-2">Manage your service contracts and agreements</p>
+          <h1 className="text-3xl font-bold text-slate-900">Smart Contract Manager</h1>
+          <p className="text-slate-600 mt-2">
+            Manage contracts from manual uploads and Google Drive sync
+          </p>
         </div>
-        <Button 
-          onClick={() => setShowUploadDialog(true)} 
-          variant="primary"
-          className="flex items-center gap-2"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Upload Agreement
-        </Button>
+        <div className="flex gap-3">
+          <Button 
+            onClick={handleSyncGoogleDrive} 
+            variant="outline"
+            className="flex items-center gap-2"
+            disabled={isSyncingMCP}
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+            </svg>
+            {isSyncingMCP ? 'Syncing...' : 'Sync Google Drive'}
+          </Button>
+          <Button 
+            onClick={() => setShowUploadDialog(true)} 
+            variant="primary"
+            className="flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Upload Contract
+          </Button>
+          <Button 
+            onClick={handleRefreshAuth} 
+            variant="outline"
+            className="flex items-center gap-2"
+            disabled={isRefreshingAuth}
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12.017 3L4.5 13.5h15.036L12.017 3z"/>
+              <path d="M6.017 15L9.517 21H14.517L11.017 15H6.017z"/>
+              <path d="M7.018 9.5L10.518 3.5H19.518L16.018 9.5H7.018z"/>
+            </svg>
+            {isRefreshingAuth ? 'Refreshing...' : 'Re-authenticate Google Drive'}
+          </Button>
+        </div>
       </div>
+
+      {/* Error Messages */}
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex justify-between items-center">
+          <p className="text-red-700">{error}</p>
+          <Button variant="outline" size="sm" onClick={clearError}>Dismiss</Button>
+        </div>
+      )}
+      
+      {mcpError && (
+        <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg flex justify-between items-center">
+          <p className="text-orange-700">{mcpError}</p>
+          <Button variant="outline" size="sm" onClick={clearMCPError}>Dismiss</Button>
+        </div>
+      )}
+
+      {/* Success Message */}
+      {lastMCPSync && (
+        <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+          <p className="text-green-700 font-medium">✅ Google Drive Sync Complete</p>
+          <p className="text-green-600 text-sm mt-1">
+            Found {lastMCPSync.total_count} files, processed {lastMCPSync.processed_count} contracts
+          </p>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -340,8 +550,8 @@ const ContractsList: React.FC = () => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-600">Total Agreements</p>
-                <p className="text-2xl font-bold text-slate-900">{contracts.length}</p>
+                <p className="text-sm font-medium text-slate-600">Total Contracts</p>
+                <p className="text-2xl font-bold text-slate-900">{allContracts.length}</p>
               </div>
               <div className="p-2 bg-blue-100 rounded-lg">
                 <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -356,14 +566,28 @@ const ContractsList: React.FC = () => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-600">Active</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {contracts.filter((a: any) => a.status === 'active').length}
-                </p>
+                <p className="text-sm font-medium text-slate-600">Manual Uploads</p>
+                <p className="text-2xl font-bold text-blue-600">{contracts.length}</p>
+              </div>
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-600">Google Drive (MCP)</p>
+                <p className="text-2xl font-bold text-green-600">{mcpContracts.length}</p>
               </div>
               <div className="p-2 bg-green-100 rounded-lg">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                <svg className="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
                 </svg>
               </div>
             </div>
@@ -374,32 +598,14 @@ const ContractsList: React.FC = () => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-600">Pending</p>
-                <p className="text-2xl font-bold text-amber-600">
-                  {contracts.filter((a: any) => a.status === 'pending_signature').length}
-                </p>
-              </div>
-              <div className="p-2 bg-amber-100 rounded-lg">
-                <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-600">Monthly Revenue</p>
-                <p className="text-2xl font-bold text-slate-900">
-                  ${contracts.reduce((sum: number, a: any) => sum + (a.monthlyRent || 0), 0).toLocaleString()}
+                <p className="text-sm font-medium text-slate-600">Processed Successfully</p>
+                <p className="text-2xl font-bold text-purple-600">
+                  {allContracts.filter(c => c.processed || c.status === 'active').length}
                 </p>
               </div>
               <div className="p-2 bg-purple-100 rounded-lg">
                 <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
             </div>
@@ -410,14 +616,20 @@ const ContractsList: React.FC = () => {
       {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle>Filter Agreements</CardTitle>
+          <CardTitle>Filter & Search Contracts</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Input
-              placeholder="Search by property, tenant, or address..."
+              placeholder="Search contracts, clients, services..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <Select
+              options={sourceOptions}
+              placeholder="Filter by source"
+              value={sourceFilter}
+              onChange={setSourceFilter}
             />
             <Select
               options={statusOptions}
@@ -425,72 +637,158 @@ const ContractsList: React.FC = () => {
               value={statusFilter}
               onChange={setStatusFilter}
             />
-            <Select
-              options={propertyTypeOptions}
-              placeholder="Filter by property type"
-              value=""
-              onChange={() => {}}
-            />
           </div>
         </CardContent>
       </Card>
 
-      {/* Agreements Table */}
+      {/* Contracts Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Service Agreements ({filteredAgreements.length})</CardTitle>
+          <CardTitle>All Contracts ({filteredContracts.length})</CardTitle>
           <CardDescription>
-            {isLoading ? 'Loading contracts...' : 'Manage your service agreements and contracts'}
+            {isLoading || isSyncingMCP ? 'Loading contracts...' : 'Manage your contracts from all sources'}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Contract</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Monthly Fee</TableHead>
-                <TableHead>Service Period</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredAgreements.map((agreement: any) => (
-                <TableRow 
-                  key={agreement.id || agreement.contract_id} 
-                  className="cursor-pointer hover:bg-slate-50"
-                  onClick={() => handleSelectContract(agreement)}
+          {filteredContracts.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 mx-auto bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">No contracts found</h3>
+              <p className="text-slate-600 mb-4">
+                Upload a contract manually or sync from Google Drive to get started.
+              </p>
+              <div className="flex justify-center gap-3 flex-wrap">
+                <Button onClick={() => setShowUploadDialog(true)} variant="primary">
+                  Upload Contract
+                </Button>
+                <Button onClick={handleSyncGoogleDrive} variant="outline" disabled={isSyncingMCP}>
+                  {isSyncingMCP ? 'Syncing...' : 'Sync Google Drive'}
+                </Button>
+                <Button 
+                  onClick={handleRefreshAuth} 
+                  variant="outline"
+                  className="flex items-center gap-2"
+                  disabled={isRefreshingAuth}
                 >
-                  <TableCell>
-                    <div>
-                      <div className="font-medium text-slate-900">{agreement.contract_number || agreement.contract_title || agreement.propertyTitle || 'Contract'}</div>
-                      <div className="text-sm text-slate-500">{agreement.service_type || agreement.propertyAddress || agreement.address || 'Service Agreement'}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium text-slate-900">{agreement.client_name || agreement.tenantName || agreement.client?.name || 'Client'}</div>
-                      <div className="text-sm text-slate-500">{agreement.client_email || agreement.tenantEmail || agreement.client?.email || 'No email'}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-semibold text-slate-900">
-                    ${agreement.monthlyRent ? agreement.monthlyRent.toLocaleString() : (agreement.payment_terms?.amount || 0).toLocaleString()}/month
-                  </TableCell>
-                  <TableCell>
-                    <div className="text-sm">
-                      <div>{agreement.leaseStartDate ? new Date(agreement.leaseStartDate).toLocaleDateString() : (agreement.start_date ? new Date(agreement.start_date).toLocaleDateString() : '')}</div>
-                      <div className="text-slate-500">to {agreement.leaseEndDate ? new Date(agreement.leaseEndDate).toLocaleDateString() : (agreement.end_date ? new Date(agreement.end_date).toLocaleDateString() : '')}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusBadgeVariant(agreement.status)}>
-                      {agreement.status ? agreement.status.replace('_', ' ') : 'Unknown'}
-                    </Badge>
-                  </TableCell>
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12.017 3L4.5 13.5h15.036L12.017 3z"/>
+                    <path d="M6.017 15L9.517 21H14.517L11.017 15H6.017z"/>
+                    <path d="M7.018 9.5L10.518 3.5H19.518L16.018 9.5H7.018z"/>
+                  </svg>
+                  {isRefreshingAuth ? 'Refreshing...' : 'Re-authenticate'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Contract</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Client/Service</TableHead>
+                  <TableHead>Details</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredContracts.map((contract: any, index) => (
+                  <TableRow 
+                    key={contract.id || contract.file_id || contract.contract_id || index} 
+                    className="cursor-pointer hover:bg-slate-50"
+                    onClick={() => handleSelectContract(contract)}
+                  >
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        {getContractIcon(contract)}
+                        <div>
+                          <div className="font-medium text-slate-900">
+                            {contract.name || contract.contract_name || contract.contract_title || contract.propertyTitle || 'Contract'}
+                          </div>
+                          <div className="text-sm text-slate-500">
+                            {contract.mime_type || contract.service_type || contract.propertyAddress || 'Contract Document'}
+                          </div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge 
+                        variant={contract.source === 'mcp' ? 'success' : 'secondary'}
+                        className="text-xs"
+                      >
+                        {contract.source === 'mcp' ? '☁️ Google Drive' : '📄 Manual Upload'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <div className="font-medium text-slate-900">
+                          {contract.client_name || contract.tenantName || contract.client?.name || 'Client'}
+                        </div>
+                        <div className="text-sm text-slate-500">
+                          {contract.client_email || contract.tenantEmail || contract.client?.email || 'No email'}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        {contract.monthlyRent && (
+                          <div className="font-semibold text-slate-900">
+                            ${contract.monthlyRent.toLocaleString()}/month
+                          </div>
+                        )}
+                        {contract.payment_terms?.amount && (
+                          <div className="font-semibold text-slate-900">
+                            ${contract.payment_terms.amount.toLocaleString()}
+                          </div>
+                        )}
+                        <div className="text-slate-500">
+                          {contract.leaseStartDate && new Date(contract.leaseStartDate).toLocaleDateString()}
+                          {contract.start_date && new Date(contract.start_date).toLocaleDateString()}
+                          {(contract.leaseStartDate || contract.start_date) && ' - '}
+                          {contract.leaseEndDate && new Date(contract.leaseEndDate).toLocaleDateString()}
+                          {contract.end_date && new Date(contract.end_date).toLocaleDateString()}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={getStatusBadgeVariant(contract)}>
+                        {getStatusText(contract)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            console.log('View contract:', contract);
+                          }}
+                        >
+                          View
+                        </Button>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStartAgenticWorkflow(contract);
+                          }}
+                          disabled={isLoading}
+                        >
+                          {isLoading ? 'Starting...' : 'Generate Invoice'}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
@@ -499,9 +797,9 @@ const ContractsList: React.FC = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <Card className="w-full max-w-md mx-4">
             <CardHeader>
-              <CardTitle>Upload Rental Agreement</CardTitle>
+              <CardTitle>Upload Contract</CardTitle>
               <CardDescription>
-                Upload a new rental agreement document (PDF only)
+                Upload a new contract document to start the AI processing workflow
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -520,7 +818,7 @@ const ContractsList: React.FC = () => {
               <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center">
                 <input
                   type="file"
-                  accept=".pdf"
+                  accept=".pdf,.doc,.docx"
                   onChange={handleFileUpload}
                   className="hidden"
                   id="file-upload"
@@ -528,13 +826,13 @@ const ContractsList: React.FC = () => {
                 <label htmlFor="file-upload" className="cursor-pointer">
                   <div className="flex flex-col items-center">
                     <svg className="w-12 h-12 text-slate-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                     <p className="text-sm text-slate-600 mb-2">
                       {selectedFile ? selectedFile.name : 'Click to select a file or drag and drop'}
                     </p>
                     <p className="text-xs text-slate-400">
-                      PDF up to 10MB
+                      PDF, DOC, or DOCX up to 10MB
                     </p>
                   </div>
                 </label>
@@ -549,7 +847,7 @@ const ContractsList: React.FC = () => {
                 onClick={handleUploadSubmit}
                 disabled={!selectedFile || isUploading}
               >
-                {isUploading ? 'Processing...' : 'Upload Agreement'}
+                {isUploading ? 'Processing...' : 'Start AI Workflow'}
               </Button>
             </CardFooter>
           </Card>

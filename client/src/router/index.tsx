@@ -1,4 +1,3 @@
-import React from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { Layout } from '../components/shared';
 
@@ -9,6 +8,7 @@ import InvoiceTemplatesList from '../pages/invoices/InvoiceTemplatesList';
 import InvoicePreviewDemo from '../pages/invoices/InvoicePreviewDemo';
 import InvoicePreviewPage from '../pages/invoices/InvoicePreviewPage';
 import InvoiceTemplatesShowcase from '../pages/invoices/InvoiceTemplatesShowcase';
+import InvoiceDataValidation from '../pages/invoices/InvoiceDataValidation';
 import { ContractsList } from '../pages/contracts';
 import { Login, Signup, EnterpriseSignup } from '../pages/auth';
 import BotsList from '../pages/bots/BotsList';
@@ -63,6 +63,14 @@ export const router = createBrowserRouter([
             element: <InvoiceTemplatesShowcase />
           }
         ]
+      },
+      {
+        path: 'invoiceData/:contractId',
+        element: <InvoiceDataValidation />
+      },
+      {
+        path: 'validation/:contractId', 
+        element: <InvoiceDataValidation />
       },
       {
         path: 'contracts',

@@ -8,6 +8,7 @@ from schemas.workflow_schemas import WorkflowState, AgentType, ProcessingStatus
 from schemas.contract_schemas import ContractInvoiceData
 from schemas.unified_invoice_schemas import UnifiedInvoiceData
 from services.database_service import get_database_service
+from services.contract_db_service import ContractDatabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class CorrectionAgent(BaseAgent):
     def __init__(self):
         super().__init__(AgentType.CORRECTION)
         self.db_service = get_database_service()
+        self.contract_db_service = ContractDatabaseService()
     
     async def process(self, state: WorkflowState) -> WorkflowState:
         """
@@ -60,6 +62,9 @@ class CorrectionAgent(BaseAgent):
             state["final_invoice"] = corrected_invoice_json  # Store for invoice_generator_agent
             state["unified_invoice_data_final"] = unified_invoice_data.model_dump()  # Store final unified data
             self.logger.info("✅ Invoice correction completed - data prepared for database save")
+            
+            # Save corrected invoice data to database
+            await self._save_corrected_data_to_db(state, corrected_invoice_json, unified_invoice_data)
             
             # Store final invoice JSON in state
             state["final_invoice_json"] = corrected_invoice_json
@@ -105,13 +110,20 @@ class CorrectionAgent(BaseAgent):
     def _extract_unified_invoice_data_from_state(self, state: WorkflowState) -> Optional[UnifiedInvoiceData]:
         """Extract the most up-to-date unified invoice data from workflow state"""
         
+        self.logger.info("🔍 Starting unified data extraction from state")
+        
         # Priority order: 
         # 1. Unified invoice data (new format)
         # 2. Convert from legacy formats if needed
         
-        # First check if we have unified invoice data
+        # Check if we have human corrections first - if so, we need to rebuild from corrected data
+        human_corrected = state.get("human_input_resolved") or state.get("human_input_completed")
+        self.logger.info(f"🔍 Human corrected flag: {human_corrected}")
+        
+        # Always check for unified data first, regardless of human corrections
         unified_data = state.get("unified_invoice_data")
         if unified_data:
+            self.logger.info("✅ Found unified_invoice_data")
             try:
                 return UnifiedInvoiceData(**unified_data)
             except Exception as e:
@@ -120,6 +132,7 @@ class CorrectionAgent(BaseAgent):
         # Check for final unified data
         unified_final_data = state.get("unified_invoice_data_final")
         if unified_final_data:
+            self.logger.info("✅ Found unified_invoice_data_final")
             try:
                 return UnifiedInvoiceData(**unified_final_data)
             except Exception as e:
@@ -131,14 +144,33 @@ class CorrectionAgent(BaseAgent):
         # Try to extract legacy data
         legacy_data = None
         
-        # First check if we have human-corrected data
-        if "human_input_resolved" in state and state["human_input_resolved"]:
-            invoice_data = state.get("invoice_data")
-            if invoice_data and isinstance(invoice_data, dict):
-                if "invoice_response" in invoice_data and "invoice_data" in invoice_data["invoice_response"]:
-                    legacy_data = invoice_data["invoice_response"]["invoice_data"]
-                elif "invoice_data" in invoice_data:
-                    legacy_data = invoice_data["invoice_data"]
+        # Debug state flags
+        self.logger.info(f"🔍 State flags - human_input_resolved: {state.get('human_input_resolved')}, human_input_completed: {state.get('human_input_completed')}")
+        
+        # First check if we have human-corrected data - prioritize the clean copy
+        if (state.get("human_input_resolved") or state.get("human_input_completed")):
+            self.logger.info("🔄 Human input detected - using corrected data")
+            
+            # First, try to use the clean human corrected data copy
+            human_corrected_data = state.get("human_corrected_data")
+            if human_corrected_data and isinstance(human_corrected_data, dict):
+                legacy_data = human_corrected_data.get("invoice_data")
+                if legacy_data:
+                    self.logger.info(f"📋 Using clean human corrected data with keys: {list(legacy_data.keys()) if isinstance(legacy_data, dict) else type(legacy_data)}")
+                    if isinstance(legacy_data, dict):
+                        self.logger.info(f"🔍 Clean corrected data sample: {dict(list(legacy_data.items())[:5])}")  # Show first 5 items
+            
+            # Fallback to nested invoice_data structure
+            if not legacy_data:
+                invoice_data = state.get("invoice_data")
+                if invoice_data and isinstance(invoice_data, dict):
+                    if "invoice_response" in invoice_data and "invoice_data" in invoice_data["invoice_response"]:
+                        legacy_data = invoice_data["invoice_response"]["invoice_data"]
+                        self.logger.info(f"📋 Using nested corrected invoice data with keys: {list(legacy_data.keys()) if isinstance(legacy_data, dict) else type(legacy_data)}")
+                        if isinstance(legacy_data, dict):
+                            self.logger.info(f"🔍 Nested corrected data sample: {dict(list(legacy_data.items())[:5])}")  # Show first 5 items
+                    elif "invoice_data" in invoice_data:
+                        legacy_data = invoice_data["invoice_data"]
         
         # Check validation results for processed data
         if not legacy_data:
@@ -196,7 +228,7 @@ class CorrectionAgent(BaseAgent):
         # Update scores and metadata
         unified_invoice_data.metadata.confidence_score = self._calculate_confidence_score_unified(unified_invoice_data, state)
         unified_invoice_data.metadata.quality_score = self._calculate_quality_score_unified(unified_invoice_data, state)
-        unified_invoice_data.metadata.human_input_applied = state.get("human_input_resolved", False)
+        unified_invoice_data.metadata.human_input_applied = state.get("human_input_resolved", False) or state.get("human_input_completed", False)
         unified_invoice_data.metadata.validation_score = state.get("validation_results", {}).get("validation_score", 0.0)
         unified_invoice_data.metadata.processing_time_seconds = self._calculate_processing_time(state)
         
@@ -312,7 +344,7 @@ class CorrectionAgent(BaseAgent):
         base_confidence = 0.7
         
         # Boost confidence if human input was provided
-        if state.get("human_input_resolved"):
+        if state.get("human_input_resolved") or state.get("human_input_completed"):
             base_confidence += 0.2
         
         # Boost confidence based on validation results
@@ -382,8 +414,16 @@ class CorrectionAgent(BaseAgent):
         if unified_data.payment_terms:
             from schemas.unified_invoice_schemas import CurrencyCode
             valid_currencies = [c.value for c in CurrencyCode]
-            if unified_data.payment_terms.currency.value not in valid_currencies:
-                self.logger.warning(f"Invalid currency {unified_data.payment_terms.currency}, defaulting to USD")
+            
+            # Get currency value - handle both enum and string cases
+            current_currency = unified_data.payment_terms.currency
+            if hasattr(current_currency, 'value'):
+                currency_str = current_currency.value
+            else:
+                currency_str = str(current_currency)
+            
+            if currency_str not in valid_currencies:
+                self.logger.warning(f"Invalid currency {currency_str}, defaulting to USD")
                 unified_data.payment_terms.currency = CurrencyCode.USD
         
         # Business Rule 3: Ensure invoice ID uniqueness
@@ -394,7 +434,7 @@ class CorrectionAgent(BaseAgent):
         # Business Rule 4: Update status and metadata
         from schemas.unified_invoice_schemas import InvoiceStatus
         unified_data.status = InvoiceStatus.CORRECTED
-        unified_data.metadata.human_reviewed = state.get("human_input_resolved", False)
+        unified_data.metadata.human_reviewed = state.get("human_input_resolved", False) or state.get("human_input_completed", False)
         
         return unified_data
     
@@ -431,5 +471,45 @@ class CorrectionAgent(BaseAgent):
         if payment_terms and payment_terms.late_fee and float(payment_terms.late_fee) > 0:
             return f"Late fee of ${float(payment_terms.late_fee):.2f} applies for payments received after due date"
         return "No late fee specified"
+    
+    async def _save_corrected_data_to_db(
+        self, 
+        state: WorkflowState, 
+        corrected_invoice_json: Dict[str, Any],
+        unified_invoice_data: UnifiedInvoiceData
+    ):
+        """Save corrected invoice data to the database"""
+        try:
+            contract_id = state.get("contract_id")
+            if not contract_id:
+                self.logger.warning("No contract_id found in state, cannot save corrected data")
+                return
+            
+            # Check if human input was involved
+            human_corrected = (
+                state.get("human_input_resolved", False) or 
+                state.get("human_input_completed", False) or
+                state.get("corrected_by_human", False)
+            )
+            
+            self.logger.info(f"💾 Saving corrected invoice data to database for contract {contract_id}")
+            
+            # Save to database using the contract database service
+            saved_data = await self.contract_db_service.save_corrected_invoice_data(
+                contract_id=contract_id,
+                corrected_data=corrected_invoice_json,
+                corrected_by_human=human_corrected
+            )
+            
+            # Store the database ID in state for reference
+            state["extracted_invoice_data_id"] = saved_data.id
+            state["corrected_data_saved"] = True
+            
+            self.logger.info(f"✅ Corrected invoice data saved to database with ID: {saved_data.id}")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to save corrected data to database: {str(e)}")
+            # Don't fail the entire process if database save fails
+            state["corrected_data_save_error"] = str(e)
     
     # Invoice saving removed - now handled by invoice_generator_agent

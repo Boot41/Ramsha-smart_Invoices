@@ -23,10 +23,17 @@ export const API_ENDPOINTS = {
     GENERATE_INVOICE_DATA: '/contracts/generate-invoice-data',
     QUERY: '/contracts/query',
     PROCESS_AND_GENERATE_INVOICE: '/contracts/process-and-generate-invoice',
+    GET_DOWNLOAD_URL: (userId: string, contractPath: string) => `/contracts/download/${userId}/${encodeURIComponent(contractPath)}`,
     HEALTH: '/contracts/health',
   },
   ORCHESTRATOR: {
     START_INVOICE_WORKFLOW: '/api/v1/orchestrator/workflow/invoice/start',
+    START_AGENTIC_WORKFLOW: '/api/v1/orchestrator/workflow/invoice/start-for-contract',
+  },
+  MCP: {
+    SYNC_CONTRACTS: '/api/v1/mcp/gdrive/contracts',
+    SYNC_RENTAL_CONTRACTS: '/api/v1/mcp/gdrive/rental-contracts',
+    WEBHOOK: '/api/v1/mcp/gdrive/webhook',
   }
   // Add other API endpoints as needed
 };
