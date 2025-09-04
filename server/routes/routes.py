@@ -14,6 +14,7 @@ from .human_input import router as human_input_router
 from .invoice_templates import router as invoice_templates_router
 from .templates import router as templates_router
 from .validation import router as validation_router
+from .mcp import router as mcp_router
 
 routes_router = APIRouter()
 
@@ -32,3 +33,4 @@ routes_router.include_router(human_input_router, tags=["👤 Human-in-the-Loop"]
 routes_router.include_router(invoice_templates_router, tags=["🎨 Invoice Templates"])
 routes_router.include_router(templates_router, tags=["🎨 Template Engine"])
 routes_router.include_router(validation_router, tags=["✅ Validation & Human Input"])
+routes_router.include_router(mcp_router, prefix="/api/v1/mcp", tags=["🔌 MCP Integration"])

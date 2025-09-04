@@ -1,0 +1,14 @@
+import hmac, hashlib, requests, json
+secret = b'some-secret'
+payload = {
+  "file_id": "file-123",
+  "name": "contract.pdf",
+  "mime_type": "application/pdf",
+  "size": 12345,
+  "download_url": "https://example.com/somefile.pdf"
+}
+body = json.dumps(payload).encode()
+sig = hmac.new(secret, body, hashlib.sha256).hexdigest()
+headers = {'Content-Type': 'application/json', 'X-MCP-Signature': sig}
+resp = requests.post('http://localhost:8000/api/v1/mcp/gdrive/webhook', data=body, headers=headers)
+print(resp.status_code, resp.text)
