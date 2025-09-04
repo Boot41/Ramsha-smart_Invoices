@@ -1,6 +1,7 @@
 agents
 controller
 db
+deployment
 details
 logs
 middleware

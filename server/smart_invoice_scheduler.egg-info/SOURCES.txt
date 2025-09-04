@@ -5,6 +5,7 @@ agents/contract_processing_agent.py
 agents/correction_agent.py
 agents/invoice_design_agent.py
 agents/invoice_generator_agent.py
+agents/invoice_scheduler_agent.py
 agents/orchestrator_agent.py
 agents/ui_invoice_generator_agent.py
 agents/validation_agent.py
@@ -36,6 +37,7 @@ routes/emails.py
 routes/embeddings.py
 routes/eval_endpoint.py
 routes/human_input.py
+routes/invoice_scheduler_routes.py
 routes/invoice_templates.py
 routes/invoices.py
 routes/llm.py
@@ -59,11 +61,13 @@ schemas/workflow_schemas.py
 scripts/debug_pinecone.py
 scripts/setup_pinecone.py
 scripts/test_pinecone_integration.py
+services/cloud_scheduler_service.py
 services/contract_db_service.py
 services/contract_processor.py
 services/contract_rag_service.py
 services/database_service.py
 services/gcp_storage_service.py
+services/gmail_mcp_service.py
 services/internal_http_client.py
 services/llm_service.py
 services/orchestrator_service.py

@@ -22,6 +22,7 @@ import logging
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from routes.routes import routes_router
+from routes.invoice_scheduler_routes import router as invoice_scheduler_router
 
 # Get logger for main module
 logger = logging.getLogger(__name__)
@@ -60,6 +61,7 @@ app.add_middleware(
 )
 
 app.include_router(routes_router)
+app.include_router(invoice_scheduler_router)
 
 @app.on_event("startup")
 async def startup():

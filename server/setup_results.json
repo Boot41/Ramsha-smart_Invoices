@@ -1,0 +1,292 @@
+{
+  "timestamp": "2025-09-04T16:42:41.984110",
+  "steps": {
+    "service_connections": {
+      "success": true,
+      "message": "\u2705 Service connections tested",
+      "services": {
+        "pinecone": {
+          "status": "healthy",
+          "details": {
+            "status": "healthy",
+            "message": "\ud83d\udfe2 Pinecone service is running successfully!",
+            "index_name": "contracts",
+            "total_vectors": 150,
+            "embedding_dimension": 768,
+            "embedding_service_status": "working"
+          }
+        },
+        "gmail": {
+          "status": "needs_oauth",
+          "details": {
+            "success": false,
+            "message": "\u274c OAuth2 authentication failed",
+            "details": {
+              "success": false,
+              "message": "\u274c No refresh token available",
+              "error": "missing_refresh_token"
+            }
+          }
+        },
+        "scheduler": {
+          "status": "healthy",
+          "details": {
+            "service": "Cloud Scheduler",
+            "status": "healthy",
+            "project_id": "arcane-storm-443513-r8",
+            "location": "us-central1",
+            "total_jobs": 0,
+            "invoice_processor_url": "https://your-service-url/process-scheduled-invoices",
+            "timestamp": "2025-09-04T16:42:45.970608"
+          }
+        },
+        "agent": {
+          "status": "healthy",
+          "details": {
+            "agent_name": "Invoice Scheduler Agent",
+            "status": "healthy",
+            "services": {
+              "pinecone": "connected",
+              "gemini_ai": "connected",
+              "gmail_mcp": "pending_setup"
+            },
+            "capabilities": [
+              "RAG-based schedule retrieval",
+              "AI-powered email generation",
+              "Automated invoice processing",
+              "Real-time scheduling (pending Gmail MCP)"
+            ],
+            "pinecone_stats": {
+              "total_vectors": 150,
+              "dimension": 768,
+              "index_fullness": 0.0,
+              "namespaces": {
+                "": "{'vector_count': 150}"
+              }
+            },
+            "timestamp": "2025-09-04T16:42:46.280047"
+          }
+        }
+      }
+    },
+    "gmail_mcp_deployment": {
+      "success": true,
+      "message": "\u2705 Gmail MCP deployment script prepared",
+      "instructions": [
+        "Run the deployment script manually:",
+        "cd /home/ramsha/Documents/smart-invoice-scheduler/server/deployment",
+        "./deploy_gmail_mcp.sh",
+        "Update GMAIL_MCP_SERVER_URL in .env with the deployed URL"
+      ],
+      "deployment_script": "/home/ramsha/Documents/smart-invoice-scheduler/server/deployment/deploy_gmail_mcp.sh"
+    },
+    "gmail_oauth_setup": {
+      "success": true,
+      "message": "\u2705 Gmail OAuth2 setup instructions ready",
+      "authorization_url": "https://accounts.google.com/o/oauth2/auth?client_id=410805250566-ogm751q7s1c2gd72s5a3f956jrpj1rhl.apps.googleusercontent.com&redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Foauth2callback&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.send&response_type=code&access_type=offline&prompt=consent",
+      "instructions": [
+        "1. Visit the authorization URL",
+        "2. Authorize the application",
+        "3. Copy the authorization code from the callback",
+        "4. Exchange the code for refresh token"
+      ],
+      "next_steps": [
+        "Visit the authorization URL",
+        "Complete OAuth flow",
+        "Save refresh token to .env file",
+        "Test Gmail connection again"
+      ]
+    },
+    "sample_schedules": {
+      "success": true,
+      "message": "\u2705 Stored 3 vectors successfully!",
+      "vector_ids": [
+        "invoice_schedule_Acme Corporation_1756984366.280746",
+        "invoice_schedule_TechStart Inc_1756984366.280777",
+        "invoice_schedule_Enterprise Solutions LLC_1756984366.280802"
+      ],
+      "texts_count": 3,
+      "embeddings_count": 3
+    },
+    "rag_retrieval": {
+      "success": true,
+      "message": "\u2705 RAG retrieval tested: 4/4 queries successful",
+      "test_queries": 4,
+      "successful_queries": 4,
+      "results": [
+        {
+          "query": "monthly invoices for web development",
+          "success": true,
+          "matches": 5,
+          "details": {
+            "success": true,
+            "message": "\u2705 Retrieved 5 schedules",
+            "query": "monthly invoices for web development",
+            "schedules": [
+              "InvoiceSchedule(recipient_email='client1@example.com', send_dates=['2024-09-05', '2024-10-05', '2024-11-05'], frequency='monthly', invoice_template='', amount=2500.0, client_name='Acme Corporation', service_description='Web Development Services', due_days=30.0, metadata={'score': 0.683813095, 'vector_id': 'invoice_schedule_Acme Corporation_1756984148.309302'})",
+              "InvoiceSchedule(recipient_email='client1@example.com', send_dates=['2024-09-05', '2024-10-05', '2024-11-05'], frequency='monthly', invoice_template='', amount=2500.0, client_name='Acme Corporation', service_description='Web Development Services', due_days=30.0, metadata={'score': 0.683813095, 'vector_id': 'invoice_schedule_Acme Corporation_1756984366.280746'})",
+              "InvoiceSchedule(recipient_email='client3@example.com', send_dates=['2024-09-15', '2024-12-15'], frequency='quarterly', invoice_template='', amount=5000.0, client_name='Enterprise Solutions LLC', service_description='Software Development & Maintenance', due_days=45.0, metadata={'score': 0.610939205, 'vector_id': 'invoice_schedule_Enterprise Solutions LLC_1756984148.309344'})",
+              "InvoiceSchedule(recipient_email='client3@example.com', send_dates=['2024-09-15', '2024-12-15'], frequency='quarterly', invoice_template='', amount=5000.0, client_name='Enterprise Solutions LLC', service_description='Software Development & Maintenance', due_days=45.0, metadata={'score': 0.610939205, 'vector_id': 'invoice_schedule_Enterprise Solutions LLC_1756984366.280802'})",
+              "InvoiceSchedule(recipient_email='client2@example.com', send_dates=['2024-09-07', '2024-09-14', '2024-09-21'], frequency='weekly', invoice_template='', amount=750.0, client_name='TechStart Inc', service_description='Digital Marketing Consultation', due_days=15.0, metadata={'score': 0.609627366, 'vector_id': 'invoice_schedule_TechStart Inc_1756984148.309326'})"
+            ],
+            "total_matches": 5
+          }
+        },
+        {
+          "query": "weekly marketing consultations",
+          "success": true,
+          "matches": 5,
+          "details": {
+            "success": true,
+            "message": "\u2705 Retrieved 5 schedules",
+            "query": "weekly marketing consultations",
+            "schedules": [
+              "InvoiceSchedule(recipient_email='client2@example.com', send_dates=['2024-09-07', '2024-09-14', '2024-09-21'], frequency='weekly', invoice_template='', amount=750.0, client_name='TechStart Inc', service_description='Digital Marketing Consultation', due_days=15.0, metadata={'score': 0.490886629, 'vector_id': 'invoice_schedule_TechStart Inc_1756984148.309326'})",
+              "InvoiceSchedule(recipient_email='client2@example.com', send_dates=['2024-09-07', '2024-09-14', '2024-09-21'], frequency='weekly', invoice_template='', amount=750.0, client_name='TechStart Inc', service_description='Digital Marketing Consultation', due_days=15.0, metadata={'score': 0.490886629, 'vector_id': 'invoice_schedule_TechStart Inc_1756984366.280777'})",
+              "InvoiceSchedule(recipient_email='client1@example.com', send_dates=['2024-09-05', '2024-10-05', '2024-11-05'], frequency='monthly', invoice_template='', amount=2500.0, client_name='Acme Corporation', service_description='Web Development Services', due_days=30.0, metadata={'score': 0.344314605, 'vector_id': 'invoice_schedule_Acme Corporation_1756984148.309302'})",
+              "InvoiceSchedule(recipient_email='client1@example.com', send_dates=['2024-09-05', '2024-10-05', '2024-11-05'], frequency='monthly', invoice_template='', amount=2500.0, client_name='Acme Corporation', service_description='Web Development Services', due_days=30.0, metadata={'score': 0.344314605, 'vector_id': 'invoice_schedule_Acme Corporation_1756984366.280746'})",
+              "InvoiceSchedule(recipient_email='client3@example.com', send_dates=['2024-09-15', '2024-12-15'], frequency='quarterly', invoice_template='', amount=5000.0, client_name='Enterprise Solutions LLC', service_description='Software Development & Maintenance', due_days=45.0, metadata={'score': 0.327422827, 'vector_id': 'invoice_schedule_Enterprise Solutions LLC_1756984148.309344'})"
+            ],
+            "total_matches": 5
+          }
+        },
+        {
+          "query": "quarterly software maintenance",
+          "success": true,
+          "matches": 5,
+          "details": {
+            "success": true,
+            "message": "\u2705 Retrieved 5 schedules",
+            "query": "quarterly software maintenance",
+            "schedules": [
+              "InvoiceSchedule(recipient_email='client3@example.com', send_dates=['2024-09-15', '2024-12-15'], frequency='quarterly', invoice_template='', amount=5000.0, client_name='Enterprise Solutions LLC', service_description='Software Development & Maintenance', due_days=45.0, metadata={'score': 0.549318194, 'vector_id': 'invoice_schedule_Enterprise Solutions LLC_1756984148.309344'})",
+              "InvoiceSchedule(recipient_email='client3@example.com', send_dates=['2024-09-15', '2024-12-15'], frequency='quarterly', invoice_template='', amount=5000.0, client_name='Enterprise Solutions LLC', service_description='Software Development & Maintenance', due_days=45.0, metadata={'score': 0.549318194, 'vector_id': 'invoice_schedule_Enterprise Solutions LLC_1756984366.280802'})",
+              "InvoiceSchedule(recipient_email='client1@example.com', send_dates=['2024-09-05', '2024-10-05', '2024-11-05'], frequency='monthly', invoice_template='', amount=2500.0, client_name='Acme Corporation', service_description='Web Development Services', due_days=30.0, metadata={'score': 0.4653804, 'vector_id': 'invoice_schedule_Acme Corporation_1756984148.309302'})",
+              "InvoiceSchedule(recipient_email='client1@example.com', send_dates=['2024-09-05', '2024-10-05', '2024-11-05'], frequency='monthly', invoice_template='', amount=2500.0, client_name='Acme Corporation', service_description='Web Development Services', due_days=30.0, metadata={'score': 0.4653804, 'vector_id': 'invoice_schedule_Acme Corporation_1756984366.280746'})",
+              "InvoiceSchedule(recipient_email='client2@example.com', send_dates=['2024-09-07', '2024-09-14', '2024-09-21'], frequency='weekly', invoice_template='', amount=750.0, client_name='TechStart Inc', service_description='Digital Marketing Consultation', due_days=15.0, metadata={'score': 0.43461284, 'vector_id': 'invoice_schedule_TechStart Inc_1756984366.280777'})"
+            ],
+            "total_matches": 5
+          }
+        },
+        {
+          "query": "invoices due in September 2024",
+          "success": true,
+          "matches": 5,
+          "details": {
+            "success": true,
+            "message": "\u2705 Retrieved 5 schedules",
+            "query": "invoices due in September 2024",
+            "schedules": [
+              "InvoiceSchedule(recipient_email='client1@example.com', send_dates=['2024-09-05', '2024-10-05', '2024-11-05'], frequency='monthly', invoice_template='', amount=2500.0, client_name='Acme Corporation', service_description='Web Development Services', due_days=30.0, metadata={'score': 0.635509253, 'vector_id': 'invoice_schedule_Acme Corporation_1756984148.309302'})",
+              "InvoiceSchedule(recipient_email='client1@example.com', send_dates=['2024-09-05', '2024-10-05', '2024-11-05'], frequency='monthly', invoice_template='', amount=2500.0, client_name='Acme Corporation', service_description='Web Development Services', due_days=30.0, metadata={'score': 0.635509253, 'vector_id': 'invoice_schedule_Acme Corporation_1756984366.280746'})",
+              "InvoiceSchedule(recipient_email='client3@example.com', send_dates=['2024-09-15', '2024-12-15'], frequency='quarterly', invoice_template='', amount=5000.0, client_name='Enterprise Solutions LLC', service_description='Software Development & Maintenance', due_days=45.0, metadata={'score': 0.633806527, 'vector_id': 'invoice_schedule_Enterprise Solutions LLC_1756984148.309344'})",
+              "InvoiceSchedule(recipient_email='client3@example.com', send_dates=['2024-09-15', '2024-12-15'], frequency='quarterly', invoice_template='', amount=5000.0, client_name='Enterprise Solutions LLC', service_description='Software Development & Maintenance', due_days=45.0, metadata={'score': 0.633806527, 'vector_id': 'invoice_schedule_Enterprise Solutions LLC_1756984366.280802'})",
+              "InvoiceSchedule(recipient_email='client2@example.com', send_dates=['2024-09-07', '2024-09-14', '2024-09-21'], frequency='weekly', invoice_template='', amount=750.0, client_name='TechStart Inc', service_description='Digital Marketing Consultation', due_days=15.0, metadata={'score': 0.622636497, 'vector_id': 'invoice_schedule_TechStart Inc_1756984366.280777'})"
+            ],
+            "total_matches": 5
+          }
+        }
+      ]
+    },
+    "email_generation": {
+      "success": true,
+      "message": "\u2705 AI email generation successful",
+      "generated_content": {
+        "subject": "Invoice - Software Development Services - $1500.0",
+        "has_html_body": true,
+        "has_text_body": true,
+        "body_length": 379
+      },
+      "client_name": "Test Client Corp"
+    },
+    "scheduler_setup": {
+      "success": true,
+      "message": "\u2705 Cloud Scheduler accessible",
+      "current_jobs": 0,
+      "scheduler_status": {
+        "success": true,
+        "message": "\u2705 Found 0 scheduled jobs",
+        "total_jobs": 0,
+        "jobs": []
+      },
+      "instructions": [
+        "Cloud Scheduler is configured and accessible",
+        "Use the API endpoints to create recurring schedules",
+        "Jobs will trigger the /process-scheduled-invoices endpoint"
+      ]
+    },
+    "end_to_end_test": {
+      "success": true,
+      "message": "\u2705 Processed 6 scheduled invoices",
+      "test_date": "2025-09-04",
+      "processing_details": {
+        "success": true,
+        "message": "\u2705 Processed 6 scheduled invoices",
+        "date": "2025-09-04",
+        "total_schedules": 6,
+        "results": [
+          {
+            "client_name": "Acme Corporation",
+            "recipient_email": "client1@example.com",
+            "amount": 2500.0,
+            "email_subject": "Invoice - Web Development Services - $2500.0",
+            "status": "prepared",
+            "message": "Email content generated successfully"
+          },
+          {
+            "client_name": "Acme Corporation",
+            "recipient_email": "client1@example.com",
+            "amount": 2500.0,
+            "email_subject": "Invoice - Web Development Services - $2500.0",
+            "status": "prepared",
+            "message": "Email content generated successfully"
+          },
+          {
+            "client_name": "Enterprise Solutions LLC",
+            "recipient_email": "client3@example.com",
+            "amount": 5000.0,
+            "email_subject": "Invoice - Software Development & Maintenance - $5000.0",
+            "status": "prepared",
+            "message": "Email content generated successfully"
+          },
+          {
+            "client_name": "Enterprise Solutions LLC",
+            "recipient_email": "client3@example.com",
+            "amount": 5000.0,
+            "email_subject": "Invoice - Software Development & Maintenance - $5000.0",
+            "status": "prepared",
+            "message": "Email content generated successfully"
+          },
+          {
+            "client_name": "TechStart Inc",
+            "recipient_email": "client2@example.com",
+            "amount": 750.0,
+            "email_subject": "Invoice - Digital Marketing Consultation - $750.0",
+            "status": "prepared",
+            "message": "Email content generated successfully"
+          },
+          {
+            "client_name": "TechStart Inc",
+            "recipient_email": "client2@example.com",
+            "amount": 750.0,
+            "email_subject": "Invoice - Digital Marketing Consultation - $750.0",
+            "status": "prepared",
+            "message": "Email content generated successfully"
+          }
+        ]
+      },
+      "workflow_steps": [
+        "\u2705 RAG retrieval from Pinecone",
+        "\u2705 AI email content generation",
+        "\u23f3 Gmail email sending (requires OAuth setup)",
+        "\u2705 Background task processing"
+      ]
+    }
+  },
+  "summary": {
+    "total_steps": 8,
+    "successful_steps": 8,
+    "success_rate": "100.0%",
+    "overall_success": true
+  }
+}

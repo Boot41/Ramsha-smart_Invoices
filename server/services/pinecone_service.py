@@ -89,7 +89,7 @@ class PineconeService:
             logger.info(f"🚀 Creating embedding for text: '{text[:50]}...'")
             
             # Use the existing embedding service
-            embedding = self.embedding_service.embedding_model.embed_query(text)
+            embedding = self.embedding_service.embed_query(text)
             
             logger.info(f"✅ Embedding created. Vector length: {len(embedding)}")
             return embedding
@@ -112,7 +112,7 @@ class PineconeService:
             logger.info(f"🚀 Creating embeddings for {len(texts)} texts")
             
             # Use the existing embedding service for batch processing
-            embeddings = self.embedding_service.embedding_model.embed_documents(texts)
+            embeddings = self.embedding_service.embed_documents(texts)
             
             logger.info(f"✅ Batch embeddings created. Generated {len(embeddings)} vectors")
             return embeddings
