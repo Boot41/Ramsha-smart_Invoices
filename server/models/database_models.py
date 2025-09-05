@@ -542,3 +542,63 @@ class GeneratedInvoice(Base):
     contract = relationship("Contract")
     extracted_data = relationship("ExtractedInvoiceData")
     user = relationship("User")
+
+
+class HTMLInvoice(Base):
+    """Model for storing generated HTML/CSS invoices from JSON data"""
+    
+    __tablename__ = "html_invoices"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    invoice_uuid = Column(String(100), nullable=False, index=True)  # References the main invoice UUID
+    invoice_number = Column(String(100), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    workflow_id = Column(String(100), nullable=False, index=True)
+    
+    # HTML content
+    html_content = Column(Text, nullable=False)  # The complete HTML/CSS content
+    template_used = Column(String(255), nullable=False)  # Template file name used
+    template_version = Column(String(50), nullable=False, default="1.0")
+    
+    # Contract reference
+    contract_name = Column(String(255), nullable=True)
+    contract_reference = Column(String(255), nullable=True)
+    
+    # JSON data for reference (JSONB for structured queries)
+    invoice_data_json = Column(JSON, nullable=False)  # Original invoice data used for generation
+    
+    # UI Generation metadata
+    generation_method = Column(String(100), nullable=False, default="template_based")
+    generated_by_agent = Column(String(100), nullable=False, default="ui_generation_agent")
+    content_type = Column(String(100), nullable=False, default="text/html")
+    character_count = Column(Integer, nullable=True)
+    
+    # Viewing and access
+    viewing_enabled = Column(Boolean, default=True)
+    viewing_url = Column(String(500), nullable=True)  # Relative URL path for viewing
+    access_count = Column(Integer, default=0)  # Track how many times it's been viewed
+    last_viewed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Status and lifecycle
+    status = Column(String(50), nullable=False, default="generated")  # generated, viewed, sent, archived
+    is_active = Column(Boolean, default=True)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    user = relationship("User", backref="html_invoices")
+    
+    def increment_view_count(self):
+        """Increment the view count and update last viewed timestamp"""
+        self.access_count = (self.access_count or 0) + 1
+        self.last_viewed_at = datetime.now(timezone.utc)
+    
+    def get_viewing_url(self) -> str:
+        """Generate viewing URL for this HTML invoice"""
+        return f"/api/invoices/{self.invoice_uuid}/view"
+    
+    def is_viewable(self) -> bool:
+        """Check if invoice is available for viewing"""
+        return self.viewing_enabled and self.is_active and self.html_content is not None

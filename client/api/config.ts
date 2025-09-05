@@ -27,8 +27,8 @@ export const API_ENDPOINTS = {
     HEALTH: '/contracts/health',
   },
   ORCHESTRATOR: {
-    START_INVOICE_WORKFLOW: '/api/v1/orchestrator/workflow/invoice/start',
-    START_AGENTIC_WORKFLOW: '/api/v1/orchestrator/workflow/invoice/start-for-contract',
+    START_INVOICE_WORKFLOW: '/api/v1/adk/workflow/invoice/start',
+    START_AGENTIC_WORKFLOW: '/api/v1/adk/workflow/invoice/start-for-contract',
   },
   MCP: {
     SYNC_CONTRACTS: '/api/v1/mcp/gdrive/contracts',

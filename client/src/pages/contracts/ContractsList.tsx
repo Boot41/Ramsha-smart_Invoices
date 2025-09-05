@@ -12,7 +12,6 @@ import { useContractStore } from '../../../stores/contractStore';
 import { useAuth } from '../../../hooks/useAuth';
 
 import { useInvoiceStore } from '../../../stores/invoiceStore';
-import WorkflowPopupPro from '../../components/workflow/WorkflowPopupPro';
 import { workflowAPI } from '../../services/workflowService';
 
 // Debug log to verify import works
@@ -48,113 +47,11 @@ const ContractsList: React.FC = () => {
   const [isRefreshingAuth, setIsRefreshingAuth] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
 
-  // Workflow popup state
+  // Workflow state - simplified for redirect approach
   const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(null);
   const [contractName, setContractName] = useState<string>('');
-  const [showWorkflowPopup, setShowWorkflowPopup] = useState(false);
-  const [workflowMessages, setWorkflowMessages] = useState<any[]>([]);
-  const [workflowStatus, setWorkflowStatus] = useState<any>(null);
-  const [humanInputRequired, setHumanInputRequired] = useState<any | null>(null);
-  const [isPaused, setIsPaused] = useState(false);
 
-  // Polling mechanism for workflow status when WebSocket is not available
-  useEffect(() => {
-    if (currentWorkflowId) {
-      let pollInterval: NodeJS.Timeout;
-      let isPolling = true;
-
-      const pollWorkflowStatus = async () => {
-        try {
-          const response = await fetch(`http://localhost:8000/api/v1/orchestrator/workflow/${currentWorkflowId}/status`, {
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-            }
-          });
-
-          if (response.ok) {
-            const statusData = await response.json();
-            console.log('🔄 Workflow status:', statusData);
-            
-            // Update workflow status
-            setWorkflowStatus(statusData);
-            
-            // Check if workflow is paused for validation
-            if (statusData.status === 'paused_for_validation' || 
-                statusData.processing_status === 'paused_for_validation' ||
-                statusData.current_agent === 'paused_for_validation') {
-              
-              console.log('🚨 Workflow paused for validation - fetching requirements...');
-              
-              try {
-                // Fetch validation requirements
-                const validationResponse = await fetch(`http://localhost:8000/api/v1/validation/requirements/${currentWorkflowId}`, {
-                  headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-                  }
-                });
-                
-                if (validationResponse.ok) {
-                  const validationData = await validationResponse.json();
-                  console.log('📋 Validation data fetched:', validationData);
-                  
-                  // Stop polling
-                  isPolling = false;
-                  clearInterval(pollInterval);
-                  
-                  // Close the workflow popup
-                  setShowWorkflowPopup(false);
-                  
-                  // Navigate to validation page
-                  navigate(`/invoiceData/${currentWorkflowId}`, {
-                    state: {
-                      workflowId: currentWorkflowId,
-                      validationData: validationData,
-                      contractName: contractName
-                    }
-                  });
-                }
-              } catch (validationError) {
-                console.error('Failed to fetch validation requirements:', validationError);
-              }
-            }
-            
-            // Check if workflow is completed
-            if (statusData.status === 'completed' || statusData.processing_status === 'completed') {
-              console.log('✅ Workflow completed');
-              isPolling = false;
-              clearInterval(pollInterval);
-              setIsPaused(false);
-            }
-            
-            // Check if workflow has error
-            if (statusData.status === 'error' || statusData.processing_status === 'error') {
-              console.log('❌ Workflow error');
-              isPolling = false;
-              clearInterval(pollInterval);
-              setIsPaused(false);
-            }
-          }
-        } catch (error) {
-          console.error('Failed to fetch workflow status:', error);
-        }
-      };
-
-      // Start polling every 3 seconds
-      pollInterval = setInterval(() => {
-        if (isPolling) {
-          pollWorkflowStatus();
-        }
-      }, 3000);
-
-      // Initial poll
-      pollWorkflowStatus();
-
-      return () => {
-        isPolling = false;
-        clearInterval(pollInterval);
-      };
-    }
-  }, [currentWorkflowId, navigate, contractName]);
+  // Removed polling logic - workflows now redirect to dedicated status page
 
 
   // Load contracts on component mount
@@ -270,15 +167,18 @@ const ContractsList: React.FC = () => {
       
       // Reset form state
       setSelectedFile(null);
-      setWorkflowMessages([]);
-      setWorkflowStatus(null);
-      setHumanInputRequired(null);
       
-      // Show workflow popup after a brief success message
+      // Navigate to workflow status page after a brief success message
       setTimeout(() => {
         setShowUploadDialog(false);
         setUploadSuccess(null);
-        setShowWorkflowPopup(true);
+        navigate(`/workflow/${result.workflow_id}`, {
+          state: { 
+            contractName,
+            workflowId: result.workflow_id,
+            fromUpload: true 
+          }
+        });
       }, 1000);
       
     } catch (error) {
@@ -335,37 +235,7 @@ const ContractsList: React.FC = () => {
     }
   };
 
-  // Enhanced workflow popup handlers
-  const handleHumanInputSubmit = async (fieldValues: Record<string, any>, userNotes: string) => {
-    console.log('📝 Submitting human input:', fieldValues, userNotes);
-    
-    try {
-      // Use REST API for human input submission
-      if (currentWorkflowId) {
-        await workflowAPI.submitHumanInput(currentWorkflowId, fieldValues, userNotes);
-        console.log('✅ Human input submitted via HTTP API');
-        
-        // Update UI state
-        setHumanInputRequired(null);
-        setIsPaused(false);
-        setWorkflowStatus((prev: any) => ({ ...prev, processing_status: 'processing' }));
-      }
-      
-    } catch (error) {
-      console.error('❌ Failed to submit human input:', error);
-      alert('Failed to submit input. Please try again.');
-    }
-  };
-
-  const handleHumanInputCancel = () => {
-    setHumanInputRequired(null);
-    // Human input cancelled - no API call needed for cancellation
-    console.log('📝 Human input cancelled by user');
-  };
-
-  const handleWorkflowPopupClose = () => {
-    setShowWorkflowPopup(false);
-  };
+  // Removed workflow popup handlers - now using dedicated workflow status page
 
   const handleDownloadData = async () => {
     try {
@@ -439,12 +309,15 @@ const ContractsList: React.FC = () => {
       setContractName(contractName);
       
       // Reset workflow UI state
-      setWorkflowMessages([]);
-      setWorkflowStatus(null);
-      setHumanInputRequired(null);
       
-      // Show workflow popup
-      setShowWorkflowPopup(true);
+      // Navigate to workflow status page
+      navigate(`/workflow/${result.workflow_id}`, {
+        state: { 
+          contractName: contractName,
+          workflowId: result.workflow_id,
+          fromContract: true 
+        }
+      });
       
       console.log('Agentic workflow started successfully:', result);
     } catch (error) {
@@ -854,22 +727,7 @@ const ContractsList: React.FC = () => {
         </div>
       )}
 
-      {/* Enhanced Workflow Popup */}
-      {currentWorkflowId && (
-        <WorkflowPopupPro
-          workflowId={currentWorkflowId}
-          contractName={contractName}
-          isOpen={showWorkflowPopup}
-          onClose={handleWorkflowPopupClose}
-          workflowStatus={workflowStatus}
-          events={workflowMessages}
-          humanInputRequest={humanInputRequired}
-          onSubmitHumanInput={handleHumanInputSubmit}
-          onCancelHumanInput={handleHumanInputCancel}
-          onDownloadData={handleDownloadData}
-          onViewTemplates={handleViewTemplates}
-        />
-      )}
+      {/* Workflow popup removed - workflows now redirect to dedicated status page */}
     </div>
   );
 };

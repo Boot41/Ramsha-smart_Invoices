@@ -19,6 +19,7 @@ Requires-Dist: fastapi>=0.104.1
 Requires-Dist: uvicorn[standard]>=0.24.0
 Requires-Dist: python-multipart>=0.0.6
 Requires-Dist: pydantic[email]>=2.5.0
+Requires-Dist: google-adk>=1.0.0
 Requires-Dist: google-cloud-aiplatform>=1.38.0
 Requires-Dist: google-cloud-storage>=2.10.0
 Requires-Dist: google-cloud-scheduler>=2.13.0

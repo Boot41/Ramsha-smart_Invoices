@@ -4,8 +4,8 @@
  */
 
 const API_BASE_URL = process.env.NODE_ENV === 'development' 
-  ? 'http://localhost:8000/api/v1/orchestrator'
-  : '/api/v1/orchestrator';
+  ? 'http://localhost:8000/api/v1/adk'
+  : '/api/v1/adk';
 
 export interface WorkflowRequest {
   user_id: string;

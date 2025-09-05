@@ -9,6 +9,7 @@ import InvoicePreviewDemo from '../pages/invoices/InvoicePreviewDemo';
 import InvoicePreviewPage from '../pages/invoices/InvoicePreviewPage';
 import InvoiceTemplatesShowcase from '../pages/invoices/InvoiceTemplatesShowcase';
 import InvoiceDataValidation from '../pages/invoices/InvoiceDataValidation';
+import InvoicesPage from '../pages/invoices/InvoicesPage';
 import { ContractsList } from '../pages/contracts';
 import { Login, Signup, EnterpriseSignup } from '../pages/auth';
 import BotsList from '../pages/bots/BotsList';
@@ -61,6 +62,10 @@ export const router = createBrowserRouter([
           {
             path: 'showcase',
             element: <InvoiceTemplatesShowcase />
+          },
+          {
+            path: 'professional',
+            element: <InvoicesPage />
           }
         ]
       },
@@ -85,7 +90,7 @@ export const router = createBrowserRouter([
           },
           {
             path: ':workflowId',
-            element: <WorkflowTracker />
+            element: <InvoiceDataValidation />
           }
         ]
       },

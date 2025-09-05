@@ -23,6 +23,15 @@ class InvoiceFrequency(str, Enum):
     CUSTOM = "custom"
 
 
+class LineItemCategory(str, Enum):
+    RENT = "rent"
+    DEPOSIT = "deposit"
+    UTILITY = "utility"
+    MAINTENANCE_FEE = "maintenance_fee"
+    LATE_FEE = "late_fee"
+    OTHER = "other"
+
+
 class ContractParty(BaseModel):
     """Information about a party in the contract"""
     name: str
@@ -33,23 +42,14 @@ class ContractParty(BaseModel):
     role: str  # client, service_provider, tenant, landlord, etc.
 
 
-class PaymentTerms(BaseModel):
-    """Payment terms extracted from contract"""
+class LineItem(BaseModel):
+    """Represents a single, specific financial charge or item from the contract."""
+    item_description: str
     amount: Optional[Decimal] = None
-    currency: str = "USD"
-    frequency: Optional[InvoiceFrequency] = None
-    due_days: Optional[int] = 30  # Net 30, etc.
-    late_fee: Optional[Decimal] = None
-    discount_terms: Optional[str] = None  # e.g., "2/10 net 30"
-
-
-class ServiceItem(BaseModel):
-    """Individual service or item from contract"""
-    description: str
-    quantity: Optional[float] = 1
-    unit_price: Optional[Decimal] = None
-    total_amount: Optional[Decimal] = None
-    unit: Optional[str] = None  # hours, days, pieces, etc.
+    currency: Optional[str] = "USD"
+    category: LineItemCategory
+    billing_cycle: Optional[InvoiceFrequency] = None
+    due_days: Optional[int] = None # e.g., due on the 10th of the month
 
 
 class ContractInvoiceData(BaseModel):
@@ -69,11 +69,8 @@ class ContractInvoiceData(BaseModel):
     end_date: Optional[date] = None
     effective_date: Optional[date] = None
     
-    # Payment Information
-    payment_terms: Optional[PaymentTerms] = None
-    
-    # Services/Items
-    services: List[ServiceItem] = []
+    # Financial Line Items
+    line_items: List[LineItem] = []
     
     # Invoice Schedule
     invoice_frequency: Optional[InvoiceFrequency] = None

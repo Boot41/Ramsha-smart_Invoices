@@ -27,6 +27,8 @@ dependencies = [
     "uvicorn[standard]>=0.24.0",
     "python-multipart>=0.0.6",
     "pydantic[email]>=2.5.0",
+    # Google Agent Development Kit (ADK)
+    "google-adk>=1.0.0",
     # Google Cloud services
     "google-cloud-aiplatform>=1.38.0",
     "google-cloud-storage>=2.10.0",

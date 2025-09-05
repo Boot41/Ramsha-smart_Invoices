@@ -1,4 +1,12 @@
 pyproject.toml
+adk_agents/__init__.py
+adk_agents/adk_integration_service.py
+adk_agents/base_adk_agent.py
+adk_agents/contract_processing_adk_agent.py
+adk_agents/correction_adk_agent.py
+adk_agents/invoice_generator_adk_agent.py
+adk_agents/orchestrator_adk_workflow.py
+adk_agents/validation_adk_agent.py
 agents/__init__.py
 agents/base_agent.py
 agents/contract_processing_agent.py
@@ -29,6 +37,7 @@ models/llm/base.py
 models/llm/base_simple.py
 models/llm/embedding.py
 routes/__init__.py
+routes/adk_orchestrator.py
 routes/auth.py
 routes/bots.py
 routes/contracts.py
@@ -41,6 +50,7 @@ routes/invoice_scheduler_routes.py
 routes/invoice_templates.py
 routes/invoices.py
 routes/llm.py
+routes/mcp.py
 routes/orchestrator.py
 routes/routes.py
 routes/templates.py
@@ -70,6 +80,7 @@ services/gcp_storage_service.py
 services/gmail_mcp_service.py
 services/internal_http_client.py
 services/llm_service.py
+services/mcp_service.py
 services/orchestrator_service.py
 services/pdf_service.py
 services/pinecone_service.py
@@ -83,6 +94,7 @@ smart_invoice_scheduler.egg-info/SOURCES.txt
 smart_invoice_scheduler.egg-info/dependency_links.txt
 smart_invoice_scheduler.egg-info/requires.txt
 smart_invoice_scheduler.egg-info/top_level.txt
+tasks/mcp_tasks.py
 test_data/generate_test_pdfs.py
 tests/comprehensive_agent_evaluation.py
 tests/contract_processing_evals.py
@@ -102,5 +114,6 @@ utils/config.py
 utils/html_sanitizer.py
 utils/langsmith_config.py
 utils/logging_config.py
+utils/mcp_utils.py
 workflows/__init__.py
 workflows/invoice_workflow.py

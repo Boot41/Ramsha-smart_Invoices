@@ -9,6 +9,7 @@ import logging
 import os
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 import base64
@@ -26,6 +27,9 @@ class MCPService:
     
     def __init__(self):
         self.gdrive_mcp_path = self._get_gdrive_mcp_path()
+        # Add cache for search results to prevent duplicate calls
+        self._search_cache = {}
+        self._cache_ttl = 60  # Cache for 60 seconds
     
     def _get_gdrive_mcp_path(self) -> str:
         """Get the path to the Google Drive MCP server"""
@@ -34,6 +38,29 @@ class MCPService:
             base_path, "mcp", "gdrive_mcp", "gdrive-mcp-server", "dist", "index.js"
         )
         return mcp_path
+    
+    def _get_cache_key(self, method: str, *args) -> str:
+        """Generate cache key for method and arguments"""
+        return f"{method}:{':'.join(str(arg) for arg in args if arg is not None)}"
+    
+    def _is_cache_valid(self, cache_key: str) -> bool:
+        """Check if cached result is still valid"""
+        if cache_key not in self._search_cache:
+            return False
+        
+        cached_time, _ = self._search_cache[cache_key]
+        return (time.time() - cached_time) < self._cache_ttl
+    
+    def _get_cached_result(self, cache_key: str):
+        """Get cached result if valid"""
+        if self._is_cache_valid(cache_key):
+            _, result = self._search_cache[cache_key]
+            return result
+        return None
+    
+    def _cache_result(self, cache_key: str, result):
+        """Cache the result with current timestamp"""
+        self._search_cache[cache_key] = (time.time(), result)
     
     def _execute_mcp_command(self, request: Dict[str, Any], timeout: int = 30) -> Dict[str, Any]:
         """Execute a command against the MCP server"""
@@ -244,14 +271,21 @@ class MCPService:
             List of contract file information
         """
         if query is None:
-            query = "contract"
+            query = "contract or rental agreement"
+        
+        # Check cache first
+        cache_key = self._get_cache_key("search_contracts", query)
+        cached_result = self._get_cached_result(cache_key)
+        if cached_result is not None:
+            logger.info(f"🚀 Using cached search results for contracts query: {query}")
+            return cached_result
         
         files = self.search_files(query)
         
         # Filter for likely contract files
-        contract_extensions = {'.pdf', '.doc', '.docx', '.txt'}
+        contract_extensions = {'.pdf'}
         contract_keywords = {
-            'contract', 'agreement', 'terms', 'conditions', 'service', 'consulting',
+            'contract', 'agreement', 'conditions', 'service', 'consulting',
             'rental', 'lease', 'rent', 'tenancy', 'landlord', 'tenant', 'property'
         }
         
@@ -270,6 +304,10 @@ class MCPService:
                 contracts.append(file_info)
         
         logger.info(f"🔍 Filtered to {len(contracts)} likely contract files")
+        
+        # Cache the result
+        self._cache_result(cache_key, contracts)
+        
         return contracts
     
     def search_rental_contracts(self, query: Optional[str] = None) -> List[Dict[str, str]]:
@@ -284,6 +322,13 @@ class MCPService:
         """
         if query is None:
             query = "rental"
+        
+        # Check cache first
+        cache_key = self._get_cache_key("search_rental_contracts", query)
+        cached_result = self._get_cached_result(cache_key)
+        if cached_result is not None:
+            logger.info(f"🚀 Using cached search results for rental contracts query: {query}")
+            return cached_result
         
         files = self.search_files(query)
         
@@ -309,9 +354,19 @@ class MCPService:
                 rental_contracts.append(file_info)
         
         logger.info(f"🏠 Filtered to {len(rental_contracts)} likely rental contract files")
+        
+        # Cache the result
+        self._cache_result(cache_key, rental_contracts)
+        
         return rental_contracts
 
 
+# Global singleton instance
+_mcp_service_instance = None
+
 def get_mcp_service() -> MCPService:
-    """Get MCP service instance"""
-    return MCPService()
+    """Get singleton MCP service instance"""
+    global _mcp_service_instance
+    if _mcp_service_instance is None:
+        _mcp_service_instance = MCPService()
+    return _mcp_service_instance

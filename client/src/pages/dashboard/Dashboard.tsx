@@ -1,152 +1,243 @@
 import React from 'react';
 import { Card } from '../../components/ui';
-import { mockDashboardStats } from '../../data/mockData';
+import { Link } from 'react-router-dom';
 import {
-  TrendingUp,
   FileText,
-  AlertCircle,
+  Calendar,
+  Bot,
+  Clock,
+  ArrowRight,
   CheckCircle,
-  DollarSign,
-  Calendar
+  Zap,
+  Shield,
+  BarChart3,
+  Settings,
+  Users,
+  Mail
 } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
-  const stats = [
+  const features = [
     {
-      name: 'Total Revenue',
-      value: `$${mockDashboardStats.totalRevenue.toLocaleString()}`,
-      icon: DollarSign,
-      change: '+12.5%',
-      changeType: 'positive'
-    },
-    {
-      name: 'Total Invoices',
-      value: mockDashboardStats.totalInvoices.toString(),
       icon: FileText,
-      change: '+5.2%',
-      changeType: 'positive'
+      title: 'Smart Contract Analysis',
+      description: 'Upload contracts and let our AI extract key billing information automatically',
+      link: '/contracts',
+      color: 'blue'
     },
     {
-      name: 'Pending Invoices',
-      value: mockDashboardStats.pendingInvoices.toString(),
-      icon: AlertCircle,
-      change: '-2.1%',
-      changeType: 'negative'
+      icon: Calendar,
+      title: 'Automated Scheduling',
+      description: 'Set up recurring invoices based on contract terms and billing cycles',
+      link: '/invoices/scheduling',
+      color: 'green'
     },
     {
-      name: 'Active Contracts',
-      value: mockDashboardStats.activeContracts.toString(),
-      icon: CheckCircle,
-      change: '+8.3%',
-      changeType: 'positive'
+      icon: Bot,
+      title: 'AI-Powered Validation',
+      description: 'Ensure invoice accuracy with intelligent data validation and verification',
+      link: '/workflow',
+      color: 'purple'
+    },
+    {
+      icon: Mail,
+      title: 'Professional Templates',
+      description: 'Generate beautiful, professional invoices with customizable templates',
+      link: '/invoices/templates',
+      color: 'orange'
+    }
+  ];
+
+  const steps = [
+    {
+      number: '01',
+      title: 'Upload Contract',
+      description: 'Upload your contract document and let our AI analyze the billing terms'
+    },
+    {
+      number: '02',
+      title: 'Configure Schedule',
+      description: 'Set up automated billing schedules based on contract requirements'
+    },
+    {
+      number: '03',
+      title: 'Validate & Send',
+      description: 'Review AI-generated invoices and send them automatically'
+    }
+  ];
+
+  const benefits = [
+    {
+      icon: Clock,
+      title: 'Save 90% Time',
+      description: 'Automate repetitive invoicing tasks'
+    },
+    {
+      icon: Shield,
+      title: 'Reduce Errors',
+      description: 'AI-powered validation ensures accuracy'
+    },
+    {
+      icon: Zap,
+      title: 'Faster Payments',
+      description: 'Professional invoices get paid faster'
+    },
+    {
+      icon: BarChart3,
+      title: 'Better Insights',
+      description: 'Track performance with detailed analytics'
     }
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* Hero Section */}
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-8 text-white">
+        <div className="max-w-4xl">
+          <h1 className="text-4xl font-bold mb-4">Smart Invoice Scheduler</h1>
+          <p className="text-xl mb-6 text-blue-100">
+            Transform your contract management with AI-powered invoice automation. 
+            Upload contracts, schedule invoices, and get paid faster.
+          </p>
+          <div className="flex flex-wrap gap-4">
+            <Link 
+              to="/contracts" 
+              className="bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-blue-50 transition-colors inline-flex items-center"
+            >
+              Get Started <ArrowRight className="ml-2 w-4 h-4" />
+            </Link>
+            <Link 
+              to="/invoices/scheduling" 
+              className="border border-white/30 text-white px-6 py-3 rounded-lg font-semibold hover:bg-white/10 transition-colors"
+            >
+              View Demo
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* Features Grid */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600 mt-2">Welcome back! Here's what's happening with your invoices.</p>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat) => (
-          <Card key={stat.name} className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">{stat.name}</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</p>
-                <p className={`text-sm mt-1 ${
-                  stat.changeType === 'positive' ? 'text-green-600' : 'text-red-600'
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">Key Features</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {features.map((feature, index) => (
+            <Link key={index} to={feature.link} className="group">
+              <Card className="p-6 h-full hover:shadow-lg transition-all duration-200 group-hover:scale-105">
+                <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 ${
+                  feature.color === 'blue' ? 'bg-blue-100' :
+                  feature.color === 'green' ? 'bg-green-100' :
+                  feature.color === 'purple' ? 'bg-purple-100' :
+                  'bg-orange-100'
                 }`}>
-                  {stat.change} from last month
+                  <feature.icon className={`w-6 h-6 ${
+                    feature.color === 'blue' ? 'text-blue-600' :
+                    feature.color === 'green' ? 'text-green-600' :
+                    feature.color === 'purple' ? 'text-purple-600' :
+                    'text-orange-600'
+                  }`} />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2 group-hover:text-blue-600">
+                  {feature.title}
+                </h3>
+                <p className="text-gray-600 text-sm leading-relaxed">
+                  {feature.description}
                 </p>
-              </div>
-              <div className={`p-3 rounded-full ${
-                stat.changeType === 'positive' ? 'bg-green-100' : 'bg-red-100'
-              }`}>
-                <stat.icon className={`w-6 h-6 ${
-                  stat.changeType === 'positive' ? 'text-green-600' : 'text-red-600'
-                }`} />
-              </div>
-            </div>
-          </Card>
-        ))}
+                <ArrowRight className="w-4 h-4 text-gray-400 mt-4 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+              </Card>
+            </Link>
+          ))}
+        </div>
       </div>
 
-      {/* Recent Activity */}
+      {/* How It Works */}
+      <div className="bg-gray-50 rounded-xl p-8">
+        <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">How It Works</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {steps.map((step, index) => (
+            <div key={index} className="text-center">
+              <div className="w-16 h-16 bg-blue-600 text-white rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">
+                {step.number}
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">{step.title}</h3>
+              <p className="text-gray-600">{step.description}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Benefits */}
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">Why Choose Smart Invoice Scheduler?</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {benefits.map((benefit, index) => (
+            <Card key={index} className="p-6 text-center">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                <benefit.icon className="w-6 h-6 text-green-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">{benefit.title}</h3>
+              <p className="text-gray-600 text-sm">{benefit.description}</p>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Recent Invoices</h3>
-            <TrendingUp className="w-5 h-5 text-gray-400" />
+            <h3 className="text-lg font-semibold text-gray-900">Quick Actions</h3>
+            <Settings className="w-5 h-5 text-gray-400" />
           </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between py-3 border-b border-gray-100">
-              <div>
-                <p className="font-medium text-gray-900">INV-2024-001</p>
-                <p className="text-sm text-gray-500">Acme Corporation</p>
+          <div className="space-y-3">
+            <Link to="/contracts" className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+              <div className="flex items-center space-x-3">
+                <FileText className="w-5 h-5 text-blue-600" />
+                <span className="font-medium text-gray-900">Upload New Contract</span>
               </div>
-              <div className="text-right">
-                <p className="font-medium text-gray-900">$2,700.00</p>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  Paid
-                </span>
+              <ArrowRight className="w-4 h-4 text-gray-400" />
+            </Link>
+            <Link to="/invoices/scheduling" className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+              <div className="flex items-center space-x-3">
+                <Calendar className="w-5 h-5 text-green-600" />
+                <span className="font-medium text-gray-900">Schedule Invoices</span>
               </div>
-            </div>
-            <div className="flex items-center justify-between py-3 border-b border-gray-100">
-              <div>
-                <p className="font-medium text-gray-900">INV-2024-002</p>
-                <p className="text-sm text-gray-500">Tech Solutions Inc</p>
+              <ArrowRight className="w-4 h-4 text-gray-400" />
+            </Link>
+            <Link to="/workflow" className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+              <div className="flex items-center space-x-3">
+                <Bot className="w-5 h-5 text-purple-600" />
+                <span className="font-medium text-gray-900">View Workflow</span>
               </div>
-              <div className="text-right">
-                <p className="font-medium text-gray-900">$1,930.50</p>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                  Pending
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center justify-between py-3">
-              <div>
-                <p className="font-medium text-gray-900">INV-2024-003</p>
-                <p className="text-sm text-gray-500">Design Studio Pro</p>
-              </div>
-              <div className="text-right">
-                <p className="font-medium text-gray-900">$3,504.00</p>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                  Overdue
-                </span>
-              </div>
-            </div>
+              <ArrowRight className="w-4 h-4 text-gray-400" />
+            </Link>
           </div>
         </Card>
 
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Upcoming Events</h3>
-            <Calendar className="w-5 h-5 text-gray-400" />
+            <h3 className="text-lg font-semibold text-gray-900">Getting Started Tips</h3>
+            <Users className="w-5 h-5 text-gray-400" />
           </div>
           <div className="space-y-4">
             <div className="flex items-start space-x-3">
-              <div className="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
+              <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
               <div>
-                <p className="font-medium text-gray-900">Monthly rent invoice generation</p>
-                <p className="text-sm text-gray-500">Tomorrow, 9:00 AM</p>
+                <p className="font-medium text-gray-900">Prepare Your Contracts</p>
+                <p className="text-sm text-gray-600">Have digital copies of your contracts ready for upload</p>
               </div>
             </div>
             <div className="flex items-start space-x-3">
-              <div className="w-2 h-2 bg-yellow-500 rounded-full mt-2"></div>
+              <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
               <div>
-                <p className="font-medium text-gray-900">Payment reminder emails</p>
-                <p className="text-sm text-gray-500">March 3, 10:00 AM</p>
+                <p className="font-medium text-gray-900">Set Up Templates</p>
+                <p className="text-sm text-gray-600">Customize invoice templates to match your brand</p>
               </div>
             </div>
             <div className="flex items-start space-x-3">
-              <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+              <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
               <div>
-                <p className="font-medium text-gray-900">Contract renewal review</p>
-                <p className="text-sm text-gray-500">March 15, 2:00 PM</p>
+                <p className="font-medium text-gray-900">Configure Notifications</p>
+                <p className="text-sm text-gray-600">Set up email notifications for automated workflows</p>
               </div>
             </div>
           </div>

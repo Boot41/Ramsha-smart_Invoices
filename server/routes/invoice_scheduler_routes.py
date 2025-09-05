@@ -60,6 +60,10 @@ class EmailTestRequest(BaseModel):
     body_html: str
     body_text: Optional[str] = None
 
+class ScheduleExtractionRequest(BaseModel):
+    """Request model for schedule extraction"""
+    user_id: Optional[str] = None
+
 # Initialize services
 agent = get_invoice_scheduler_agent()
 gmail_service = get_gmail_mcp_service()
@@ -294,6 +298,28 @@ async def create_sample_schedules() -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"❌ Error creating sample schedules: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/schedules/extract")
+async def extract_schedules_from_invoices(request: ScheduleExtractionRequest) -> Dict[str, Any]:
+    """
+    Extract schedule details from database invoices using RAG
+    
+    This endpoint fetches invoices from the database, identifies their contract IDs,
+    and uses RAG to retrieve basic schedule details including:
+    - Number of times invoice should be sent
+    - Frequency (monthly, quarterly, etc.)
+    - Send dates
+    """
+    try:
+        logger.info(f"📊 Extracting schedules from invoices for user: {request.user_id or 'all users'}")
+        
+        result = await agent.fetch_invoices_and_extract_schedules(user_id=request.user_id)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ Error extracting schedules from invoices: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/gmail/test-email")

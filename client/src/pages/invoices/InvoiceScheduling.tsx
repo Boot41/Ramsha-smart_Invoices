@@ -8,6 +8,7 @@ import { Select } from '../../components/ui/Select';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { mockRentInvoiceSchedules, mockRentalAgreements } from '../../data/mockData';
+import { invoiceSchedulerAPI, type ExtractedSchedule, type ScheduleExtractionResponse } from '../../../api/invoiceScheduler';
 import type { RentInvoiceSchedule, RentalAgreement, SelectOption, RentInvoiceTemplate } from '../../../types';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
@@ -29,6 +30,18 @@ const InvoiceScheduling: React.FC = () => {
   const location = useLocation();
   const [selectedAgreement, setSelectedAgreement] = useState<RentalAgreement | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<RentInvoiceTemplate | null>(null);
+  
+  // Schedule extraction state
+  const [extractedSchedules, setExtractedSchedules] = useState<ExtractedSchedule[]>([]);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractionError, setExtractionError] = useState<string | null>(null);
+  const [extractionStats, setExtractionStats] = useState<{
+    totalInvoices: number;
+    processedInvoices: number;
+    lastExtraction: string | null;
+  }>({ totalInvoices: 0, processedInvoices: 0, lastExtraction: null });
+  const [selectedExtractedSchedule, setSelectedExtractedSchedule] = useState<ExtractedSchedule | null>(null);
+  const [showExtractionView, setShowExtractionView] = useState(false);
 
   useEffect(() => {
     // Get selected agreement and template from navigation state
@@ -39,6 +52,36 @@ const InvoiceScheduling: React.FC = () => {
       setSelectedTemplate(location.state.selectedTemplate as RentInvoiceTemplate);
     }
   }, [location.state]);
+
+  // Extract schedules from database invoices
+  const handleExtractSchedules = async (userId?: string) => {
+    setIsExtracting(true);
+    setExtractionError(null);
+    
+    try {
+      const response: ScheduleExtractionResponse = await invoiceSchedulerAPI.extractSchedules({
+        user_id: userId
+      });
+      
+      if (response.success) {
+        setExtractedSchedules(response.schedule_extracts);
+        setExtractionStats({
+          totalInvoices: response.total_invoices,
+          processedInvoices: response.processed_invoices,
+          lastExtraction: response.extraction_timestamp
+        });
+        
+        console.log('✅ Schedule extraction successful:', response);
+      } else {
+        setExtractionError(response.message || 'Failed to extract schedules');
+      }
+    } catch (error) {
+      console.error('❌ Schedule extraction failed:', error);
+      setExtractionError(error instanceof Error ? error.message : 'Unknown error occurred');
+    } finally {
+      setIsExtracting(false);
+    }
+  };
   const [schedules] = useState<RentInvoiceSchedule[]>(mockRentInvoiceSchedules);
   const [selectedSchedule, setSelectedSchedule] = useState<RentInvoiceSchedule | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -60,10 +103,11 @@ const InvoiceScheduling: React.FC = () => {
     label: `${agreement.propertyTitle} - ${agreement.tenantName}`
   }));
 
-  // Generate calendar events from schedules
+  // Generate calendar events from schedules and extracted data
   const calendarEvents = useMemo((): ScheduleEvent[] => {
     const events: ScheduleEvent[] = [];
     
+    // Add events from existing mock schedules
     schedules.forEach(schedule => {
       const agreement = mockRentalAgreements.find(a => a.id === schedule.rentalAgreementId);
       if (!agreement) return;
@@ -143,8 +187,54 @@ const InvoiceScheduling: React.FC = () => {
       }
     });
 
+    // Add events from extracted schedules
+    extractedSchedules.forEach((extractedSchedule, index) => {
+      const scheduleDetails = extractedSchedule.schedule_details;
+      
+      if (scheduleDetails.found_schedule_info && scheduleDetails.send_dates?.length > 0) {
+        scheduleDetails.send_dates.forEach((dateStr, dateIndex) => {
+          try {
+            const sendDate = new Date(dateStr);
+            if (sendDate >= new Date()) {
+              events.push({
+                id: `extracted-${extractedSchedule.invoice_id}-${dateIndex}`,
+                title: `🔄 ${extractedSchedule.client_name} - ${scheduleDetails.frequency || 'Scheduled'}`,
+                start: sendDate,
+                end: new Date(sendDate.getTime() + 60 * 60 * 1000),
+                resource: {
+                  extractedSchedule,
+                  type: 'extracted'
+                }
+              });
+            }
+          } catch (error) {
+            console.warn('Invalid date in extracted schedule:', dateStr);
+          }
+        });
+      } else if (extractedSchedule.due_date) {
+        // Fallback: use due date if available
+        try {
+          const dueDate = new Date(extractedSchedule.due_date);
+          if (dueDate >= new Date()) {
+            events.push({
+              id: `extracted-due-${extractedSchedule.invoice_id}`,
+              title: `💼 ${extractedSchedule.client_name} - Due`,
+              start: dueDate,
+              end: new Date(dueDate.getTime() + 60 * 60 * 1000),
+              resource: {
+                extractedSchedule,
+                type: 'extracted'
+              }
+            });
+          }
+        } catch (error) {
+          console.warn('Invalid due date in extracted schedule:', extractedSchedule.due_date);
+        }
+      }
+    });
+
     return events;
-  }, [schedules]);
+  }, [schedules, extractedSchedules]);
 
   const eventStyleGetter = (event: ScheduleEvent) => {
     let backgroundColor = '#3b82f6';
@@ -153,6 +243,8 @@ const InvoiceScheduling: React.FC = () => {
       backgroundColor = '#f59e0b';
     } else if (event.title.includes('Due')) {
       backgroundColor = '#dc2626';
+    } else if (event.resource?.type === 'extracted') {
+      backgroundColor = '#8b5cf6'; // Purple for extracted schedules
     }
 
     return {
@@ -197,21 +289,76 @@ const InvoiceScheduling: React.FC = () => {
               'Manage automated invoice generation and payment reminders'
             }
           </p>
+          {extractionStats.lastExtraction && (
+            <p className="text-sm text-slate-500 mt-1">
+              Last extraction: {new Date(extractionStats.lastExtraction).toLocaleString()} 
+              ({extractionStats.processedInvoices} of {extractionStats.totalInvoices} invoices processed)
+            </p>
+          )}
         </div>
-        <Button 
-          onClick={() => setShowCreateForm(true)} 
-          variant="primary"
-          className="flex items-center gap-2"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-          Create Schedule
-        </Button>
+        <div className="flex gap-3">
+          <Button 
+            onClick={() => handleExtractSchedules()} 
+            variant="secondary"
+            disabled={isExtracting}
+            className="flex items-center gap-2"
+          >
+            {isExtracting ? (
+              <>
+                <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
+                Extracting...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Extract Schedules
+              </>
+            )}
+          </Button>
+          <Button 
+            onClick={() => setShowExtractionView(!showExtractionView)} 
+            variant="outline"
+            className="flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            {showExtractionView ? 'Hide' : 'View'} Extracted Data
+          </Button>
+          <Button 
+            onClick={() => setShowCreateForm(true)} 
+            variant="primary"
+            className="flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            Create Schedule
+          </Button>
+        </div>
       </div>
 
+      {/* Extraction Error */}
+      {extractionError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex">
+            <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Extraction Error</h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p>{extractionError}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Active Schedules Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -279,6 +426,24 @@ const InvoiceScheduling: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-600">Extracted Schedules</p>
+                <p className="text-2xl font-bold text-purple-600">
+                  {extractedSchedules.length}
+                </p>
+              </div>
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Calendar */}
@@ -290,7 +455,7 @@ const InvoiceScheduling: React.FC = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="mb-4 flex space-x-4">
+          <div className="mb-4 flex flex-wrap gap-4">
             <div className="flex items-center space-x-2">
               <div className="w-4 h-4 bg-blue-600 rounded"></div>
               <span className="text-sm text-slate-600">Invoice Generation</span>
@@ -302,6 +467,10 @@ const InvoiceScheduling: React.FC = () => {
             <div className="flex items-center space-x-2">
               <div className="w-4 h-4 bg-amber-500 rounded"></div>
               <span className="text-sm text-slate-600">Reminder</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-purple-600 rounded"></div>
+              <span className="text-sm text-slate-600">Extracted Schedule</span>
             </div>
           </div>
           
@@ -318,13 +487,252 @@ const InvoiceScheduling: React.FC = () => {
               popup
               onSelectEvent={(event) => {
                 if (event.resource) {
-                  setSelectedSchedule(event.resource.schedule);
+                  if (event.resource.type === 'extracted') {
+                    setSelectedExtractedSchedule(event.resource.extractedSchedule);
+                    setSelectedSchedule(null);
+                  } else {
+                    setSelectedSchedule(event.resource.schedule);
+                    setSelectedExtractedSchedule(null);
+                  }
                 }
               }}
             />
           </div>
         </CardContent>
       </Card>
+
+      {/* Extracted Schedules View */}
+      {showExtractionView && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Extracted Schedule Data</CardTitle>
+            <CardDescription>
+              Schedule details extracted from database invoices using RAG
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isExtracting ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="flex items-center space-x-3">
+                  <div className="w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-slate-600">Extracting schedule data...</span>
+                </div>
+              </div>
+            ) : extractedSchedules.length === 0 ? (
+              <div className="text-center py-8 text-slate-500">
+                <svg className="w-12 h-12 mx-auto mb-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <p>No schedule data extracted yet</p>
+                <p className="text-sm mt-1">Click "Extract Schedules" to analyze invoice data</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Summary */}
+                <div className="flex items-center justify-between p-4 bg-purple-50 rounded-lg">
+                  <div>
+                    <p className="text-sm font-medium text-purple-900">
+                      Found {extractedSchedules.filter(s => s.schedule_details.found_schedule_info).length} schedules
+                      with AI-extracted data
+                    </p>
+                    <p className="text-xs text-purple-700 mt-1">
+                      Average confidence: {(
+                        extractedSchedules.reduce((sum, s) => sum + (s.schedule_details.confidence_score || 0), 0) / 
+                        extractedSchedules.length
+                      ).toFixed(2)}
+                    </p>
+                  </div>
+                  <Badge variant="secondary" className="bg-purple-100 text-purple-800">
+                    {extractedSchedules.length} Total
+                  </Badge>
+                </div>
+
+                {/* Extracted Schedules Grid */}
+                <div className="grid gap-4 max-h-96 overflow-y-auto">
+                  {extractedSchedules.map((schedule) => (
+                    <Card 
+                      key={schedule.invoice_id} 
+                      className={`cursor-pointer transition-all hover:shadow-md ${
+                        selectedExtractedSchedule?.invoice_id === schedule.invoice_id 
+                          ? 'ring-2 ring-purple-500 bg-purple-50' 
+                          : 'hover:bg-slate-50'
+                      }`}
+                      onClick={() => setSelectedExtractedSchedule(schedule)}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h4 className="font-semibold text-slate-900">{schedule.client_name}</h4>
+                              <Badge 
+                                variant={schedule.schedule_details.found_schedule_info ? 'success' : 'secondary'}
+                                className="text-xs"
+                              >
+                                {schedule.schedule_details.found_schedule_info ? 'Schedule Found' : 'Basic Info'}
+                              </Badge>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div>
+                                <span className="text-slate-600">Invoice #:</span>
+                                <span className="ml-2 font-mono">{schedule.invoice_number}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-600">Amount:</span>
+                                <span className="ml-2 font-semibold">
+                                  ${schedule.total_amount?.toLocaleString() || 'N/A'} {schedule.currency}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-600">Frequency:</span>
+                                <span className="ml-2 capitalize">
+                                  {schedule.schedule_details.frequency || 'Unknown'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-600">Invoices:</span>
+                                <span className="ml-2">
+                                  {schedule.schedule_details.number_of_invoices || 'N/A'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="flex items-center gap-1 mb-1">
+                              <svg className="w-3 h-3 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <span className="text-xs text-purple-600 font-medium">
+                                {((schedule.schedule_details.confidence_score || 0) * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500">
+                              {schedule.schedule_details.extraction_method === 'rag_search' ? 'RAG' : 'Fallback'}
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Extracted Schedule Details Sidebar */}
+      {selectedExtractedSchedule && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Extracted Schedule Details</CardTitle>
+            <CardDescription>
+              AI-extracted data for {selectedExtractedSchedule.client_name}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {/* Basic Invoice Info */}
+              <div>
+                <h4 className="font-semibold text-slate-900 mb-3">Invoice Information</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <label className="text-slate-600">Invoice Number</label>
+                    <p className="font-mono">{selectedExtractedSchedule.invoice_number}</p>
+                  </div>
+                  <div>
+                    <label className="text-slate-600">Contract ID</label>
+                    <p className="font-mono text-xs">{selectedExtractedSchedule.contract_id}</p>
+                  </div>
+                  <div>
+                    <label className="text-slate-600">Client Email</label>
+                    <p className="text-blue-600">{selectedExtractedSchedule.client_email || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="text-slate-600">Status</label>
+                    <Badge variant="secondary" className="capitalize">
+                      {selectedExtractedSchedule.status}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* Schedule Details */}
+              <div>
+                <h4 className="font-semibold text-slate-900 mb-3">Schedule Details</h4>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600">Schedule Found</span>
+                    <Badge 
+                      variant={selectedExtractedSchedule.schedule_details.found_schedule_info ? 'success' : 'secondary'}
+                    >
+                      {selectedExtractedSchedule.schedule_details.found_schedule_info ? 'Yes' : 'No'}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600">Frequency</span>
+                    <span className="capitalize font-medium">
+                      {selectedExtractedSchedule.schedule_details.frequency || 'Unknown'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600">Number of Invoices</span>
+                    <span className="font-medium">
+                      {selectedExtractedSchedule.schedule_details.number_of_invoices || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600">Confidence Score</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-16 h-2 bg-slate-200 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-purple-600 transition-all"
+                          style={{ 
+                            width: `${(selectedExtractedSchedule.schedule_details.confidence_score || 0) * 100}%` 
+                          }}
+                        ></div>
+                      </div>
+                      <span className="text-sm font-medium">
+                        {((selectedExtractedSchedule.schedule_details.confidence_score || 0) * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Send Dates */}
+              {selectedExtractedSchedule.schedule_details.send_dates?.length > 0 && (
+                <div>
+                  <h4 className="font-semibold text-slate-900 mb-3">Send Dates</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedExtractedSchedule.schedule_details.send_dates.map((date, index) => (
+                      <Badge key={index} variant="outline" className="text-xs">
+                        {new Date(date).toLocaleDateString()}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* AI Analysis Summary */}
+              {selectedExtractedSchedule.schedule_details.analysis_summary && (
+                <div>
+                  <h4 className="font-semibold text-slate-900 mb-3">AI Analysis</h4>
+                  <div className="p-3 bg-slate-50 rounded-lg">
+                    <p className="text-sm text-slate-700">
+                      {selectedExtractedSchedule.schedule_details.analysis_summary}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+          <CardFooter className="flex space-x-2">
+            <Button variant="outline" size="sm">Create Schedule</Button>
+            <Button variant="secondary" size="sm">View Invoice</Button>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedExtractedSchedule(null)}>Close</Button>
+          </CardFooter>
+        </Card>
+      )}
 
       {/* Schedule Details Sidebar */}
       {selectedSchedule && (

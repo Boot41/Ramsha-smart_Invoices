@@ -64,7 +64,15 @@ class UnifiedParty(BaseModel):
     address: Optional[str] = None
     phone: Optional[str] = None
     tax_id: Optional[str] = None
-    role: PartyRole
+    role: Optional[PartyRole] = None
+    
+    @validator('role', pre=True, always=True)
+    def set_default_role(cls, v, values):
+        """Set default role if not provided"""
+        if v is None:
+            # Default fallback - this should be overridden by context-specific methods
+            return PartyRole.CLIENT
+        return v
     
     class Config:
         use_enum_values = True
@@ -411,6 +419,24 @@ class UnifiedInvoiceData(BaseModel):
             if new_value is not None and str(new_value).strip():
                 self._set_nested_field(updated_data, field_path, new_value)
         
+        # Ensure required role fields are set based on party context
+        if updated_data.get("client"):
+            if not updated_data["client"].get("role"):
+                updated_data["client"]["role"] = PartyRole.CLIENT.value
+        
+        if updated_data.get("service_provider"):
+            if not updated_data["service_provider"].get("role"):
+                updated_data["service_provider"]["role"] = PartyRole.SERVICE_PROVIDER.value
+                
+        # Handle cases where corrections might have created party data without roles
+        for field_path, new_value in corrections.items():
+            if field_path.startswith("client.") and updated_data.get("client"):
+                if not updated_data["client"].get("role"):
+                    updated_data["client"]["role"] = PartyRole.CLIENT.value
+            elif field_path.startswith("service_provider.") and updated_data.get("service_provider"):
+                if not updated_data["service_provider"].get("role"):
+                    updated_data["service_provider"]["role"] = PartyRole.SERVICE_PROVIDER.value
+        
         # Mark as having human input applied
         updated_data["metadata"]["human_input_applied"] = True
         updated_data["metadata"]["human_reviewed"] = True
@@ -431,6 +457,20 @@ class UnifiedInvoiceData(BaseModel):
             current = current[key]
         
         current[keys[-1]] = value
+    
+    @validator('client', pre=True)
+    def ensure_client_role(cls, v):
+        """Ensure client has correct role"""
+        if v and isinstance(v, dict) and not v.get('role'):
+            v['role'] = PartyRole.CLIENT.value
+        return v
+    
+    @validator('service_provider', pre=True)
+    def ensure_service_provider_role(cls, v):
+        """Ensure service provider has correct role"""
+        if v and isinstance(v, dict) and not v.get('role'):
+            v['role'] = PartyRole.SERVICE_PROVIDER.value
+        return v
     
     class Config:
         use_enum_values = True
