@@ -24,7 +24,7 @@ class NaturalLanguageCorrectionService:
     def __init__(self):
         # Use proper Vertex AI text generation model instead of embedding-only service
         from models.llm.base import get_model
-        self.model = get_model(model_name="gemini-2.0-flash", temperature=0.1)
+        self.model = get_model(model_name="gemini-1.5-pro", temperature=0.1)
     
     async def process_natural_language_query(
         self,
@@ -50,31 +50,47 @@ class NaturalLanguageCorrectionService:
         try:
             # Create context for LLM
             context = self._build_context(current_invoice_data, missing_fields, validation_issues)
+            logger.info(f"📋 Built context with {len(missing_fields)} missing fields")
             
             # Generate extraction prompt
             prompt = self._create_extraction_prompt(query, context, missing_fields)
+            logger.info(f"📝 Generated extraction prompt ({len(prompt)} chars)")
             
             # Use Vertex AI model to extract structured data from query
-            response = await self.model.generate_content_async(prompt)
+            logger.info("🤖 Calling LLM for field extraction...")
+            response = self.model.generate_content(prompt)
             
             # Parse LLM response into corrections
             response_text = response.text if hasattr(response, 'text') else str(response)
+            logger.info(f"📥 LLM response received ({len(response_text)} chars)")
+            logger.debug(f"🔍 Raw LLM response: {response_text[:500]}...")
+            
             corrections = self._parse_llm_response(response_text, missing_fields)
+            logger.info(f"🧩 Parsed {len(corrections)} raw corrections from LLM")
             
             # Validate and clean corrections
             validated_corrections = self._validate_corrections(corrections, missing_fields)
+            logger.info(f"✅ Validated {len(validated_corrections)} field corrections")
             
-            logger.info(f"✅ Extracted {len(validated_corrections)} field corrections from natural language")
+            # Log each validated correction
+            for field, value in validated_corrections.items():
+                logger.info(f"   🔸 {field} → {value}")
+            
+            confidence = self._calculate_confidence(validated_corrections, missing_fields)
+            logger.info(f"📊 Extraction confidence: {confidence:.2f}")
             
             return {
                 "success": True,
                 "corrections": validated_corrections,
                 "original_query": query,
-                "extraction_confidence": self._calculate_confidence(validated_corrections, missing_fields)
+                "extraction_confidence": confidence,
+                "raw_response": response_text[:200] + "..." if len(response_text) > 200 else response_text
             }
             
         except Exception as e:
             logger.error(f"❌ Failed to process natural language query: {str(e)}")
+            import traceback
+            logger.error(f"📋 Full traceback: {traceback.format_exc()}")
             return {
                 "success": False,
                 "error": str(e),
@@ -104,6 +120,7 @@ class NaturalLanguageCorrectionService:
         """Create LLM prompt for field extraction"""
         
         field_descriptions = {
+            # Party information
             "client.name": "The client's or customer's name",
             "client.email": "The client's email address",
             "client.address": "The client's address",
@@ -111,14 +128,21 @@ class NaturalLanguageCorrectionService:
             "service_provider.name": "The service provider's or company's name",
             "service_provider.email": "The service provider's email",
             "service_provider.address": "The service provider's address",
+            # Payment information
             "payment_terms.amount": "The payment amount or price (number only)",
             "payment_terms.currency": "The currency code (USD, EUR, etc.)",
             "payment_terms.frequency": "Payment frequency (monthly, quarterly, annually, one_time)",
             "payment_terms.due_days": "Number of days until payment is due",
+            # Service information
             "services.0.description": "Description of the service or product",
-            "start_date": "Service start date",
-            "end_date": "Service end date",
-            "contract_details.contract_title": "Title or name of the contract"
+            "services.0.quantity": "Quantity of the service (number)",
+            "services.0.unit_price": "Unit price per service (number)",
+            # Contract dates and info
+            "start_date": "Contract/service start date",
+            "end_date": "Contract/service end date",
+            "contract_title": "Title or name of the contract",
+            # Invoice frequency mapping
+            "invoice_frequency": "How often invoices are generated (monthly, quarterly, annually, one_time)"
         }
         
         prompt = f"""
@@ -151,7 +175,7 @@ EXAMPLE RESPONSE:
     "payment_terms.amount": "1500.00",
     "payment_terms.currency": "USD",
     "payment_terms.frequency": "monthly",
-    "service_details.description": "Web development services"
+    "services.0.description": "Web development services"
 }}
 
 IMPORTANT RULES:
@@ -224,7 +248,7 @@ EXTRACT THE INFORMATION:
                 r"(monthly|quarterly|annually|weekly|daily|one[_\s]time)",
                 r"every\s+(month|quarter|year|week|day)"
             ],
-            "service_details.description": [
+            "services.0.description": [
                 r"for\s+([a-zA-Z\s]+?)(?:\s+starting|\s+beginning|\.|\n|$)",
                 r"services?\s+(?:include\s+|are\s+)?([a-zA-Z\s]+?)(?:\s+starting|\s+beginning|\.|\n|$)"
             ]
@@ -276,10 +300,21 @@ EXTRACT THE INFORMATION:
                 if len(currency_value) == 3:
                     validated[field] = currency_value
                     
-            elif field.endswith(".frequency"):
+            elif field.endswith(".frequency") or field == "invoice_frequency":
                 freq_value = str(value).lower().strip().replace(" ", "_")
-                if freq_value in ["monthly", "quarterly", "annually", "weekly", "daily", "one_time"]:
-                    validated[field] = freq_value
+                # Map various frequency formats to standard values
+                frequency_mapping = {
+                    "month": "monthly", "monthly": "monthly", "per month": "monthly", "every month": "monthly",
+                    "quarter": "quarterly", "quarterly": "quarterly", "per quarter": "quarterly", "every quarter": "quarterly",
+                    "year": "annually", "annual": "annually", "annually": "annually", "yearly": "annually", "per year": "annually", "every year": "annually",
+                    "week": "weekly", "weekly": "weekly", "per week": "weekly", "every week": "weekly",
+                    "day": "daily", "daily": "daily", "per day": "daily", "every day": "daily",
+                    "once": "one_time", "one time": "one_time", "onetime": "one_time", "one_time": "one_time",
+                    "biannual": "biannually", "biannually": "biannually", "twice yearly": "biannually"
+                }
+                mapped_freq = frequency_mapping.get(freq_value, freq_value)
+                if mapped_freq in ["monthly", "quarterly", "annually", "weekly", "daily", "one_time", "biannually"]:
+                    validated[field] = mapped_freq
                     
             elif field.endswith(".name") or field.endswith(".description"):
                 name_value = str(value).strip()

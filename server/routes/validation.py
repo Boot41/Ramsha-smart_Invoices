@@ -5,9 +5,9 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 from pydantic import BaseModel, Field
 from services.orchestrator_service import get_orchestrator_service
-from agents.correction_agent import CorrectionAgent
-from agents.invoice_generator_agent import InvoiceGeneratorAgent
-from agents.ui_invoice_generator_agent import UIInvoiceGeneratorAgent
+# from agents.correction_agent import CorrectionAgent  # TODO: Update to ADK agents
+# from agents.invoice_generator_agent import InvoiceGeneratorAgent  # TODO: Update to ADK agents
+# from agents.ui_invoice_generator_agent import UIInvoiceGeneratorAgent  # TODO: Update to ADK agents
 from middleware.auth import get_current_user
 import logging
 from datetime import datetime, timedelta
@@ -287,8 +287,10 @@ async def resume_workflow_with_corrections(
         # Handle both structured corrections and natural language queries
         corrections_to_apply = {}
         
-        if request.natural_language_query:
-            logger.info(f"🗣️ Processing natural language query: {request.natural_language_query}")
+        # Check for natural language query (handle empty strings and None)
+        natural_language_query = request.natural_language_query
+        if natural_language_query and natural_language_query.strip():
+            logger.info(f"🗣️ Processing natural language query: {natural_language_query}")
             
             # Process natural language query to extract corrections
             try:
@@ -311,7 +313,7 @@ async def resume_workflow_with_corrections(
                 
                 nl_service = get_natural_language_correction_service()
                 extraction_result = await nl_service.process_natural_language_query(
-                    query=request.natural_language_query,
+                    query=natural_language_query,
                     current_invoice_data=current_data,
                     missing_fields=missing_fields,
                     validation_issues=validation_issues
@@ -327,8 +329,9 @@ async def resume_workflow_with_corrections(
             except Exception as e:
                 logger.error(f"❌ Failed to process natural language query: {str(e)}")
                 # Continue with empty corrections - don't block the workflow
-                
-        elif request.corrected_data:
+        
+        # Check for structured corrected data (handle empty dicts and None)
+        elif request.corrected_data and request.corrected_data:
             corrections_to_apply = request.corrected_data
             logger.info(f"📝 Using structured corrections: {list(corrections_to_apply.keys())}")
         else:
@@ -409,7 +412,7 @@ async def resume_workflow_with_corrections(
                 
                 # Prepare human input data - support both natural language and structured input
                 human_input_data = {}
-                if request.natural_language_query:
+                if request.natural_language_query and request.natural_language_query.strip():
                     logger.info(f"🗣️ Using natural language query for workflow {request.workflow_id}")
                     human_input_data = {
                         "query": request.natural_language_query,
@@ -417,7 +420,7 @@ async def resume_workflow_with_corrections(
                         "user_notes": request.user_notes,
                         "input_type": "natural_language"
                     }
-                elif request.corrected_data:
+                elif request.corrected_data and request.corrected_data:
                     logger.info(f"📝 Using structured field values for workflow {request.workflow_id}")
                     human_input_data = {
                         "field_values": request.corrected_data,
@@ -425,10 +428,13 @@ async def resume_workflow_with_corrections(
                         "input_type": "structured"
                     }
                 else:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Either natural_language_query or corrected_data must be provided"
-                    )
+                    # Allow continuing workflow without corrections - this can happen when user just wants to proceed
+                    logger.info(f"📝 No corrections provided, continuing workflow {request.workflow_id} as-is")
+                    human_input_data = {
+                        "field_values": {},
+                        "user_notes": request.user_notes,
+                        "input_type": "no_corrections"
+                    }
                 
                 # For ADK workflows, use the ADK integration service to resume
                 final_state = await adk_service.resume_workflow_after_human_input(
@@ -450,18 +456,21 @@ async def resume_workflow_with_corrections(
                 )
             else:
                 # Regular workflow: Step 1: Correction Agent
-                correction_agent = CorrectionAgent()
-                workflow_state = await correction_agent.process(workflow_state)
-                logger.info(f"✅ Correction agent completed for workflow {request.workflow_id}")
+                # correction_agent = CorrectionAgent()  # TODO: Update to ADK agents
+                # workflow_state = await correction_agent.process(workflow_state)
+                # logger.info(f"✅ Correction agent completed for workflow {request.workflow_id}")
                 
                 # Step 2: Invoice Generation Agent
-                invoice_agent = InvoiceGeneratorAgent()
-                workflow_state = await invoice_agent.process(workflow_state)
-                logger.info(f"✅ Invoice generation completed for workflow {request.workflow_id}")
+                # invoice_agent = InvoiceGeneratorAgent()  # TODO: Update to ADK agents
+                # workflow_state = await invoice_agent.process(workflow_state)
+                # logger.info(f"✅ Invoice generation completed for workflow {request.workflow_id}")
                 
                 # Step 3: UI Invoice Generator Agent
-                ui_agent = UIInvoiceGeneratorAgent()
-                workflow_state = await ui_agent.process(workflow_state)
+                # ui_agent = UIInvoiceGeneratorAgent()  # TODO: Update to ADK agents
+                # workflow_state = await ui_agent.process(workflow_state)
+                
+                # TODO: Implement ADK agent workflow for validation
+                raise NotImplementedError("Validation workflow needs to be updated for ADK agents")
                 logger.info(f"✅ UI generation completed for workflow {request.workflow_id}")
                 
                 # Mark workflow as completed

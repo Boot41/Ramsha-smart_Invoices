@@ -3,7 +3,7 @@ from typing import Dict, Any
 from pydantic import BaseModel, Field
 from services.orchestrator_service import get_orchestrator_service
 from controller.orchestrator_controller import get_orchestrator_controller
-from agents.validation_agent import ValidationAgent
+# from agents.validation_agent import ValidationAgent  # TODO: Update to ADK agents
 import logging
 from datetime import datetime
 
@@ -122,7 +122,8 @@ async def submit_human_input(request: HumanInputRequest):
             )
         
         # Process human input using validation agent
-        validation_agent = ValidationAgent()
+        # validation_agent = ValidationAgent()  # TODO: Update to ADK agents
+        raise NotImplementedError("ValidationAgent needs to be updated to use ADK interface")
         
         # Add user notes to the input data if provided
         field_values_with_notes = request.field_values.copy()

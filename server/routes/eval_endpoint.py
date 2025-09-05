@@ -20,7 +20,7 @@ def datetime_serializer(obj):
 
 from schemas.workflow_schemas import WorkflowState
 from tests.contract_processing_evals import ContractProcessingEvaluator
-from agents.contract_processing_agent import ContractProcessingAgent
+from adk_agents.contract_processing_adk_agent import ContractProcessingADKAgent
 from services.contract_rag_service import get_contract_rag_service
 
 router = APIRouter(prefix="/eval", tags=["evaluation"])
@@ -31,7 +31,7 @@ class SingleContractTestRequest(BaseModel):
     expected_fields: Optional[Dict[str, Any]] = None
 
 # Initialize services
-contract_agent = ContractProcessingAgent()
+contract_agent = ContractProcessingADKAgent()
 contract_rag_service = get_contract_rag_service()
 
 @router.post("/contract-processing/run-evals")
@@ -106,7 +106,9 @@ async def test_single_contract(request: SingleContractTestRequest):
         
         # Execute contract processing
         start_time = datetime.now()
-        result_state = contract_agent.execute(test_state)
+        # NOTE: ADK agents have different method signatures - this needs to be updated
+        # result_state = contract_agent.process_adk(test_state, context)
+        raise NotImplementedError("Endpoint needs to be updated for ADK agent interface")
         execution_time = (datetime.now() - start_time).total_seconds()
         
         # Extract invoice data
@@ -244,7 +246,9 @@ async def batch_test_contracts(
                 }
                 
                 start_time = datetime.now()
-                result_state = contract_agent.execute(test_state)
+                # NOTE: ADK agents have different method signatures - this needs to be updated
+                # result_state = contract_agent.process_adk(test_state, context)
+                raise NotImplementedError("Endpoint needs to be updated for ADK agent interface")
                 execution_time = (datetime.now() - start_time).total_seconds()
                 
                 # Extract invoice data

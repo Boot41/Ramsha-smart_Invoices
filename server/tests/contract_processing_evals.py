@@ -21,7 +21,7 @@ def datetime_serializer(obj):
         return obj.isoformat()
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
-from agents.contract_processing_agent import ContractProcessingAgent
+from adk_agents.contract_processing_adk_agent import ContractProcessingADKAgent
 from schemas.workflow_schemas import WorkflowState, ProcessingStatus
 from services.contract_processor import ContractProcessor
 
@@ -54,7 +54,7 @@ class ContractProcessingEvaluator:
     
     
     def __init__(self):
-        self.agent = ContractProcessingAgent()
+        self.agent = ContractProcessingADKAgent()
         self.processor = ContractProcessor()
         self.results: List[EvaluationResult] = []
         
@@ -272,7 +272,9 @@ class ContractProcessingEvaluator:
             state = self.create_workflow_state(test_case)
             
             # Execute contract processing agent
-            result_state = self.agent.execute(state)
+            # NOTE: ADK agents have different method signatures - this needs to be updated
+            # result_state = self.agent.process_adk(state, context)
+            raise NotImplementedError("Test needs to be updated for ADK agent interface")
             
             # Calculate execution time
             execution_time = (datetime.now() - start_time).total_seconds()

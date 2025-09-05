@@ -15,12 +15,12 @@ import uuid
 # Using SimpleEvent from base_adk_agent instead of Google ADK Event
 
 from .contract_processing_adk_agent import ContractProcessingADKAgent
-from .validation_adk_agent import ValidationADKAgent
+from .validation_adk_agents import ValidationADKAgent
 from .correction_adk_agent import CorrectionADKAgent
 from .invoice_generator_adk_agent import InvoiceGeneratorADKAgent
 from .ui_generation_adk_agent import UIGenerationADKAgent
-# from .schedule_retrieval_adk_agent import ScheduleRetrievalADKAgent  # Temporarily commented due to missing dependency
 from schemas.workflow_schemas import ProcessingStatus
+from .schedule_retrieval_adk_agent import ScheduleRetrievalADKAgent
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +41,13 @@ class InvoiceProcessingADKWorkflow:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         
-        # Initialize all ADK agents
+        # Initialize available ADK agents
         self.contract_processing_agent = ContractProcessingADKAgent()
         self.validation_agent = ValidationADKAgent()
         self.correction_agent = CorrectionADKAgent()
         self.invoice_generator_agent = InvoiceGeneratorADKAgent()
         self.ui_generation_agent = UIGenerationADKAgent()
-        # self.schedule_retrieval_agent = ScheduleRetrievalADKAgent()  # Temporarily commented due to missing dependency
+        self.schedule_retrieval_agent = ScheduleRetrievalADKAgent()
         
         # Create the main ADK workflow
         self.workflow = self._create_adk_workflow()
@@ -65,8 +65,8 @@ class InvoiceProcessingADKWorkflow:
             self.validation_agent,
             self.correction_agent,
             self.invoice_generator_agent,
-            self.ui_generation_agent
-            # self.schedule_retrieval_agent  # Temporarily commented due to missing dependency
+            self.ui_generation_agent,
+            self.schedule_retrieval_agent  # Missing agent, commented out
         ]
     
     async def execute_workflow(
@@ -153,7 +153,7 @@ class InvoiceProcessingADKWorkflow:
             
             # Execute agents sequentially using the workflow list
             final_events = []
-            validation_bypass = initial_state.get("options", {}).get("bypass_validation", True)
+            validation_bypass = initial_state.get("options", {}).get("bypass_validation", False)
             
             for i, agent in enumerate(self.workflow):
                 agent_name = agent.__class__.__name__
@@ -166,11 +166,10 @@ class InvoiceProcessingADKWorkflow:
                     self.logger.info(f"⏭️ Skipping {agent_name} due to previous failure and bypass disabled")
                     continue
                 
-                # For UI and scheduling agents, allow them to run even if validation failed (if bypass enabled)
-                if (agent_name in ["UIGenerationADKAgent", "ScheduleRetrievalADKAgent"] and 
-                    current_status in [ProcessingStatus.FAILED.value, ProcessingStatus.NEEDS_HUMAN_INPUT.value] and 
-                    validation_bypass):
-                    self.logger.info(f"⚠️ Running {agent_name} with validation bypass enabled")
+                # For agents after validation, check if we should continue after validation failure
+                if (agent_name in ["CorrectionADKAgent", "InvoiceGeneratorADKAgent", "UIGenerationADKAgent", "ScheduleRetrievalADKAgent"] and
+                    validation_bypass and current_status in [ProcessingStatus.FAILED.value, ProcessingStatus.NEEDS_HUMAN_INPUT.value]):
+                    self.logger.info(f"✅ Running {agent_name} - validation bypass enabled")
                     context.state["validation_bypassed"] = True
                 
                 async for event in agent._run_async_impl(context):
@@ -339,14 +338,25 @@ class InvoiceProcessingADKWorkflow:
                 # Update final state
                 workflow_state = context.state
                 
-                # Continue with UI generation agent even if validation failed
-                if validation_bypass or workflow_state.get("processing_status") == ProcessingStatus.SUCCESS.value:
-                    self.logger.info("🎨 Continuing with UI generation agent")
-                    async for event in self.ui_generation_agent.process_adk(workflow_state, context):
-                        self.logger.info(f"📋 UI Generation Event: {event.author} - {event.content}")
-                    
-                    # Update final state
+                # Continue with UI generation and schedule retrieval agents since validation is skipped
+                self.logger.info("🎨 Continuing with UI generation agent")
+                async for event in self.ui_generation_agent.process_adk(workflow_state, context):
+                    self.logger.info(f"📋 UI Generation Event: {event.author} - {event.content}")
+                
+                # Update final state
+                workflow_state = context.state
+                
+                # Continue with schedule retrieval agent (if available)
+                try:
+                    self.logger.info("🗓️ Continuing with Schedule Retrieval agent")
+                    async for event in self.schedule_retrieval_agent.process_adk(workflow_state, context):
+                        self.logger.info(f"📋 Schedule Retrieval Event: {event.author} - {event.content}")
                     workflow_state = context.state
+                except Exception as e:
+                    # Non-fatal: log and continue
+                    self.logger.warning(f"⚠️ Schedule retrieval agent failed or unavailable: {e}")
+                
+                # Final state already updated from previous agent
             
             workflow_state["last_updated_at"] = datetime.now().isoformat()
             workflow_state["workflow_resumed"] = True
