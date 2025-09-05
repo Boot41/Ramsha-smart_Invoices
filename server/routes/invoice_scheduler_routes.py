@@ -91,7 +91,7 @@ class _SimpleInvocationContext:
 
 
 async def _run_adk_agent(agent, state: dict) -> dict:
-    """Run an ADK agent's run implementation and collect the final state.
+    """Run an ADK agent's process_adk implementation and collect the final state.
 
     Returns the updated state after the agent runs. This does not try to emulate the full
     InvocationContext API, only provides `.state` and `.update()` used by BaseADKAgent.
@@ -100,7 +100,7 @@ async def _run_adk_agent(agent, state: dict) -> dict:
 
     # Collect events but ignore streaming details for the HTTP route
     try:
-        async for _event in agent.run(state, ctx):
+        async for _event in agent.process_adk(state, ctx):
             # Events are SimpleEvent objects; we don't need to surface them here
             pass
     except Exception as e:
@@ -404,38 +404,38 @@ async def create_sample_schedules() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 # ...existing code...
 
-# @router.post("/schedules/extract")
-# async def extract_schedules_from_invoices(request: ScheduleExtractionRequest) -> Dict[str, Any]:
-#     """
-#     Extract schedule details from database invoices using RAG
-#     """
-#     try:
-#         logger.info(f"📊 Extracting schedules from invoices for user: {request.user_id or 'all users'}")
+@router.post("/schedules/extract")
+async def extract_schedules_from_invoices(request: ScheduleExtractionRequest) -> Dict[str, Any]:
+    """
+    Extract schedule details from database invoices using RAG
+    """
+    try:
+        logger.info(f"📊 Extracting schedules from invoices for user: {request.user_id or 'all users'}")
         
-#         state = {
-#             "workflow_id": f"extract-schedules-{int(datetime.now().timestamp())}",
-#             "user_id": request.user_id or "system",
-#             "processing_status": "pending",
-#             "action": "extract_schedules"
-#         }
-#         try:
-#             updated_state = await _run_adk_agent(schedule_retrieval_agent, state)
-#             res = updated_state.get("extraction_result") or updated_state.get("schedule_retrieval_result") or {}
-#             if res:
-#                 return {"success": True, "result": res}
-#             else:
-#                 return {"success": False, "message": "ADK agent ran but returned no extraction result", "raw": updated_state}
-#         except Exception as e:
-#             logger.error(f"❌ ADK extraction failed: {str(e)}")
-#             return {
-#                 "success": False,
-#                 "message": "Invoice scheduler agent needs to be updated to ADK interface",
-#                 "error": str(e)
-#             }
+        state = {
+            "workflow_id": f"extract-schedules-{int(datetime.now().timestamp())}",
+            "user_id": request.user_id or "system",
+            "processing_status": "pending",
+            "action": "extract_schedules"
+        }
+        try:
+            updated_state = await _run_adk_agent(schedule_retrieval_agent, state)
+            res = updated_state.get("extraction_result") or updated_state.get("schedule_retrieval_result") or {}
+            if res:
+                return {"success": True, "result": res}
+            else:
+                return {"success": False, "message": "ADK agent ran but returned no extraction result", "raw": updated_state}
+        except Exception as e:
+            logger.error(f"❌ ADK extraction failed: {str(e)}")
+            return {
+                "success": False,
+                "message": "Invoice scheduler agent needs to be updated to ADK interface",
+                "error": str(e)
+            }
         
-#     except Exception as e:
-#         logger.error(f"❌ Error extracting schedules from invoices: {str(e)}")
-#         raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"❌ Error extracting schedules from invoices: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/schedules")
 async def create_invoice_schedules(schedules: List[InvoiceScheduleRequest]) -> Dict[str, Any]:

@@ -48,7 +48,7 @@ class ScheduleRetrievalADKAgent(BaseADKAgent):
     
     # Concrete services are initialized in __init__
     
-    async def run(self, state: Dict[str, Any], context: InvocationContext) -> AsyncGenerator[SimpleEvent, None]:
+    async def process_adk(self, state: Dict[str, Any], context: InvocationContext) -> AsyncGenerator[SimpleEvent, None]:
         """
         ADK implementation for schedule retrieval and invoice scheduling workflow
         
@@ -284,7 +284,11 @@ class ScheduleRetrievalADKAgent(BaseADKAgent):
         
         return " | ".join(query_parts)
 
-    
+    async def _run_live_impl(self, ctx: InvocationContext) -> AsyncGenerator[SimpleEvent, None]:
+        """Delegate live run to the async implementation to satisfy BaseAgent abstract API."""
+        # Forward to the async runner implemented in BaseADKAgent
+        async for event in self._run_async_impl(ctx):
+            yield event
 
     async def _maybe_call_gemini(self, query: str, user_id: Optional[str]) -> Optional[str]:
         """Attempt to call Gemini via ADK to refine or expand the RAG query. Graceful no-op if ADK unavailable."""
