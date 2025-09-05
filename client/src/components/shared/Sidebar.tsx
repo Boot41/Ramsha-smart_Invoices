@@ -54,18 +54,7 @@ const menuItems: MenuItemType[] = [
     icon: FileSignature,
     path: '/contracts'
   },
-  {
-    id: 'workflow',
-    label: 'Agentic Workflow',
-    icon: Zap,
-    path: '/workflow'
-  },
-  {
-    id: 'marketplace',
-    label: 'Marketplace',
-    icon: Store,
-    path: '/marketplace'
-  },
+
   // {
   //   id: 'admin',
   //   label: 'Admin',

@@ -2,7 +2,7 @@
 
 ## 🏗️ Architecture Overview
 
-Smart Invoice Scheduler follows a modern microservices architecture with clear separation of concerns between the frontend, backend, and AI processing services.
+Smart Invoice Scheduler follows a modern microservices architecture with clear separation of concerns between the frontend, backend, and AI processing services. The recent introduction of the **Google Agent Development Kit (ADK)** has evolved the AI processing layer into a sophisticated agentic workflow.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -18,22 +18,22 @@ Smart Invoice Scheduler follows a modern microservices architecture with clear s
 ┌─────────────────────────────────────────────────────────────────┐
 │                         API Gateway Layer                        │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐               │
-│  │  FastAPI    │  │ Middleware  │  │   CORS &    │               │
-│  │  Routes     │  │ Auth/Logs   │  │ Validation  │               │
+│  │  FastAPI    │  │ Middleware  │  │   ADK Routes  │               │
+│  │  Routes     │  │ Auth/Logs   │  │ (/adk/*)    │               │
 │  └─────────────┘  └─────────────┘  └─────────────┘               │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                         Service Layer
                                 │
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Business Logic Layer                      │
+│                     ADK Agentic Workflow Layer                   │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐               │
-│  │ Contract    │  │  Invoice    │  │    User     │               │
-│  │ Processing  │  │ Generation  │  │ Management  │               │
+│  │ Orchestrator│  │  Contract   │  │ Validation  │               │
+│  │  Workflow   │  │  Processor  │  │    Agent    │               │
 │  └─────────────┘  └─────────────┘  └─────────────┘               │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐               │
-│  │  RAG        │  │  Embedding  │  │  Storage    │               │
-│  │ Services    │  │  Services   │  │  Services   │               │
+│  │ Correction  │  │  Invoice    │  │ UI & Sched. │               │
+│  │    Agent    │  │  Generator  │  │   Agents    │               │
 │  └─────────────┘  └─────────────┘  └─────────────┘               │
 └─────────────────────────────────────────────────────────────────┘
                                 │
@@ -49,6 +49,8 @@ Smart Invoice Scheduler follows a modern microservices architecture with clear s
 ```
 
 ## 🖥️ Frontend Architecture
+
+(No significant changes in the new architecture)
 
 ### Component Hierarchy
 ```
@@ -70,231 +72,92 @@ App.tsx
     └── Shared/ (Common components)
 ```
 
-### State Management Architecture
-```typescript
-// Zustand Store Structure
-interface AppStore {
-  auth: AuthState;
-  contracts: ContractState;
-  invoices: InvoiceState;
-}
-
-// Store Composition
-const useAuthStore = create<AuthState>(...);
-const useContractStore = create<ContractState>(...);
-const useInvoiceStore = create<InvoiceState>(...);
-```
-
-### Routing Architecture
-```typescript
-// Protected Route Structure
-<Routes>
-  <Route path="/auth/*" element={<AuthRoutes />} />
-  <Route path="/*" element={
-    <ProtectedRoute>
-      <AppRoutes />
-    </ProtectedRoute>
-  } />
-</Routes>
-```
-
 ## 🔧 Backend Architecture
 
-### Service Layer Pattern
+### ADK Agent-based Service Layer
+The backend has transitioned to an agent-based architecture using the Google ADK. Business logic is encapsulated within a series of cooperating agents orchestrated by a main workflow.
+
 ```python
-# Service Layer Structure
-services/
-├── contract_processor.py      # Contract PDF processing
-├── contract_rag_service.py    # RAG-based analysis
-├── contract_db_service.py     # Database operations
-├── user_service.py           # User management
-├── gcp_storage_service.py    # File storage
-└── pinecone_service.py       # Vector operations
+# ADK Agent Structure (adk_agents/)
+├── orchestrator_adk_workflow.py    # Main workflow orchestrator
+├── contract_processing_adk_agent.py # Ingestion, RAG
+├── validation_adk_agents.py        # Business rule validation, human-in-the-loop
+├── correction_adk_agent.py         # Data correction and finalization
+├── invoice_generator_adk_agent.py  # Database record creation
+├── ui_generation_adk_agent.py      # HTML invoice generation
+└── schedule_retrieval_adk_agent.py # Automated scheduling
 ```
 
 ### API Route Organization
+The API routes now include dedicated endpoints for managing the ADK agentic workflows.
+
 ```python
-# Route Structure
-routes/
-├── auth.py          # Authentication endpoints
-├── contracts.py     # Contract management
-├── invoices.py      # Invoice operations
-├── users.py         # User management
-├── documents.py     # Document handling
-└── embeddings.py    # AI/ML operations
+# Route Structure (routes/)
+├── auth.py
+├── contracts.py
+├── invoices.py
+├── adk_orchestrator.py  # <-- New ADK workflow endpoints
+└── ...
 ```
 
-### Middleware Stack
-```python
-# Middleware Chain
-Request → CORS → Authentication → Rate Limiting → Route Handler
+## 🤖 AI Processing Architecture (ADK Agentic Workflow)
+
+The AI processing has been re-architected into a sequential, event-driven workflow managed by the `InvoiceProcessingADKWorkflow`. Each step is handled by a specialized ADK agent.
+
+### ADK Workflow Pipeline
+```
+API Request (/adk/workflow/invoice/start)
+     │
+     ▼
+┌──────────────────────────┐
+│ InvoiceProcessingADKWorkflow │
+└──────────────────────────┘
+     │
+     ├─> 1. ContractProcessingADKAgent: Ingests PDF/text, creates embeddings, and runs RAG to extract initial structured data.
+     │
+     ├─> 2. ValidationADKAgent: Validates the extracted data against business rules. If validation fails, it can pause the workflow and request human input.
+     │
+     ├─> 3. CorrectionADKAgent: Applies any human-provided corrections, cleans the data, and generates the final, canonical invoice JSON.
+     │
+     ├─> 4. InvoiceGeneratorADKAgent: Creates a formal invoice record in the PostgreSQL database from the corrected JSON.
+     │
+     ├─> 5. UIGenerationADKAgent: Generates a user-friendly HTML/CSS representation of the invoice from a template.
+     │
+     └─> 6. ScheduleRetrievalADKAgent: Queries Pinecone for scheduling patterns and uses Google Cloud Scheduler to set up recurring invoice jobs.
 ```
 
-## 🤖 AI Processing Architecture
-
-### RAG (Retrieval-Augmented Generation) Pipeline
+### Human-in-the-Loop
+The `ValidationADKAgent` introduces a critical human-in-the-loop checkpoint.
 ```
-PDF Upload → Text Extraction → Chunking → Embedding Generation → Vector Storage
-                                              ↓
-Query Input → Embedding → Vector Search → Context Retrieval → LLM Processing → Response
-```
-
-### Contract Processing Flow
-```python
-class ContractProcessor:
-    def process_contract(self, pdf_file, user_id, contract_name):
-        # 1. Extract text from PDF
-        text = self.extract_pdf_text(pdf_file)
-        
-        # 2. Clean and preprocess text
-        cleaned_text = self.preprocess_text(text)
-        
-        # 3. Chunk text for embedding
-        chunks = self.chunk_text(cleaned_text)
-        
-        # 4. Generate embeddings
-        embeddings = self.generate_embeddings(chunks)
-        
-        # 5. Store in vector database
-        vector_ids = self.store_embeddings(embeddings, metadata)
-        
-        return ProcessingResult(...)
-```
-
-### Invoice Generation Pipeline
-```python
-class ContractRAGService:
-    def generate_invoice_data(self, user_id, contract_name, query):
-        # 1. Query vector database for relevant chunks
-        relevant_chunks = self.search_similar_chunks(query)
-        
-        # 2. Build context for LLM
-        context = self.build_context(relevant_chunks)
-        
-        # 3. Generate structured invoice data
-        invoice_data = self.llm_extract_invoice_data(context, query)
-        
-        # 4. Validate and structure response
-        return self.validate_invoice_data(invoice_data)
+Validation Fails ─> Workflow Pauses ─> API returns "human_input_required"
+     │
+     ├─> Frontend displays validation issues to the user.
+     │
+     ├─> User submits corrections via API (/adk/workflow/{id}/resume).
+     │
+     └─> Workflow resumes, starting with the CorrectionADKAgent.
 ```
 
 ## 🗄️ Database Architecture
 
-### Database Design Principles
-- **Normalization**: 3NF normalized schema design
-- **Indexing**: Strategic indexing for query performance
-- **Relationships**: Clear foreign key relationships
-- **Constraints**: Data integrity through constraints
-- **Audit Trail**: Comprehensive logging and versioning
-
-### Connection Architecture
-```python
-# Database Connection Management
-Database Pool → SQLAlchemy Engine → Session Factory → ORM Models
-```
-
-### Migration Strategy
-```python
-# Alembic Migration Chain
-Initial Schema → Migration_001 → Migration_002 → ... → Current Schema
-```
+(No significant changes in the new architecture)
 
 ## 🔐 Security Architecture
 
-### Authentication Flow
-```
-Login Request → Credential Validation → JWT Generation → Session Creation → Access Grant
-```
-
-### Authorization Model
-```python
-# Role-Based Access Control (RBAC)
-User → Role → Permissions → Resource Access
-```
-
-### Security Middleware Stack
-```python
-# Security Chain
-Request → Rate Limiting → Authentication → Authorization → Route Access
-```
-
-### Data Protection
-- **Encryption at Rest**: Database encryption
-- **Encryption in Transit**: HTTPS/TLS
-- **Password Security**: bcrypt hashing
-- **Token Security**: JWT with expiration
-- **Session Management**: Secure session handling
+(No significant changes in the new architecture)
 
 ## 📊 Data Flow Architecture
 
-### Contract Upload Flow
+### ADK Contract Processing Flow
 ```
-Frontend Upload → API Gateway → File Validation → Storage Service → Processing Queue → AI Processing → Database Storage
-```
-
-### Invoice Generation Flow
-```
-User Request → Authentication → Contract Retrieval → RAG Processing → Data Extraction → Template Rendering → Response
+Frontend Upload → /adk/workflow/invoice/start → ADK Orchestrator → [Agent Workflow] → Final State in DB
 ```
 
-### Real-time Updates
+### Invoice Generation Flow (ADK)
 ```
-Database Change → Event Trigger → WebSocket Notification → Frontend Update
+User Request → ADK Orchestrator → Contract Processing → Validation → Correction → Invoice Generation → UI Generation → Scheduling
 ```
-
-## 🚀 Deployment Architecture
-
-### Development Environment
-```
-Local Dev → Hot Reload → API Server → Local Database
-```
-
-### Production Environment
-```
-Load Balancer → API Gateway → Application Servers → Database Cluster → File Storage
-```
-
-### Scalability Considerations
-- **Horizontal Scaling**: Multiple API server instances
-- **Database Scaling**: Read replicas and connection pooling
-- **Caching Strategy**: Redis for session and query caching
-- **CDN Integration**: Static asset delivery
-- **Microservices Ready**: Service separation for independent scaling
-
-## 🔧 Technology Stack Integration
-
-### Frontend Integration
-- **Build Process**: Vite bundling with TypeScript compilation
-- **Asset Optimization**: Tree shaking and code splitting
-- **Development Tools**: Hot module replacement and debugging
-
-### Backend Integration
-- **ASGI Server**: Uvicorn for async request handling
-- **Database ORM**: SQLAlchemy with async support
-- **API Documentation**: Automatic OpenAPI/Swagger generation
-- **Testing Framework**: Pytest with async testing support
-
-### DevOps Integration
-- **Containerization**: Docker containers for consistent deployment
-- **CI/CD Pipeline**: Automated testing and deployment
-- **Monitoring**: Health checks and performance monitoring
-- **Logging**: Structured logging with correlation IDs
-
-## 📈 Performance Architecture
-
-### Optimization Strategies
-- **Database Indexing**: Query optimization through strategic indexes
-- **Connection Pooling**: Efficient database connection management
-- **Async Processing**: Non-blocking I/O operations
-- **Caching Layers**: Multi-level caching strategy
-- **Lazy Loading**: On-demand data loading
-
-### Monitoring and Observability
-- **Performance Metrics**: Response time and throughput monitoring
-- **Error Tracking**: Comprehensive error logging and alerting
-- **Resource Monitoring**: CPU, memory, and database performance
-- **User Analytics**: Usage patterns and performance insights
 
 ---
 
-*This architecture documentation provides a comprehensive overview of the Smart Invoice Scheduler system design, focusing on scalability, security, and maintainability principles.*
+*This architecture documentation provides a comprehensive overview of the Smart Invoice Scheduler system design, focusing on the new Google ADK-based agentic workflow.*
