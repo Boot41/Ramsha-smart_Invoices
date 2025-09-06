@@ -416,7 +416,11 @@ async def extract_schedules_from_invoices(request: ScheduleExtractionRequest) ->
             "workflow_id": f"extract-schedules-{int(datetime.now().timestamp())}",
             "user_id": request.user_id or "system",
             "processing_status": "pending",
-            "action": "extract_schedules"
+            "action": "extract_schedules",
+            # Provide mock invoice generation result so agent doesn't skip
+            "invoice_generation_result": {"generation_successful": True},
+            # Provide minimal invoice data for extraction context
+            "current_invoice_data": {"metadata": {"action": "extract_schedules"}}
         }
         try:
             updated_state = await _run_adk_agent(schedule_retrieval_agent, state)
@@ -482,134 +486,7 @@ async def create_invoice_schedules(schedules: List[InvoiceScheduleRequest]) -> D
         logger.error(f"❌ Error creating schedules: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/schedules/search")
-async def search_invoice_schedules(query: str, top_k: int = 10) -> Dict[str, Any]:
-    """
-    Search for invoice schedules using natural language query
-    """
-    try:
-        logger.info(f"🔍 Searching schedules for query: {query}")
-        
-        # result = await agent.retrieve_schedules_by_query(query, top_k)  # TODO: Update to ADK agents
-        result = {
-            "success": False,
-            "message": "Invoice scheduler agent needs to be updated to ADK interface"
-        }
-        
-        # Convert schedules to dict for JSON serialization
-        if result["success"] and "schedules" in result:
-            schedules_dict = []
-            for schedule in result["schedules"]:
-                schedules_dict.append({
-                    "recipient_email": schedule.recipient_email,
-                    "send_dates": schedule.send_dates,
-                    "frequency": schedule.frequency,
-                    "invoice_template": schedule.invoice_template,
-                    "amount": schedule.amount,
-                    "client_name": schedule.client_name,
-                    "service_description": schedule.service_description,
-                    "due_days": schedule.due_days,
-                    "metadata": schedule.metadata
-                })
-            result["schedules"] = schedules_dict
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"❌ Error searching schedules: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/schedules/date/{target_date}")
-async def get_schedules_by_date(target_date: str) -> Dict[str, Any]:
-    """
-    Get invoice schedules for a specific date
-    """
-    try:
-        logger.info(f"📅 Getting schedules for date: {target_date}")
-        
-        # Use ADK schedule retrieval with a minimal state indicating date filtering
-        state = {
-            "workflow_id": f"date-search-{target_date}",
-            "user_id": "system",
-            "processing_status": "pending",
-            "invoice_generation_result": {"generation_successful": True}
-        }
-
-        try:
-            updated_state = await _run_adk_agent(schedule_retrieval_agent, state)
-            res = updated_state.get("schedule_retrieval_result", {})
-            result = {"success": True, "schedules": res.get("retrieved_schedules", []), "raw": res}
-        except Exception as e:
-            result = {"success": False, "message": str(e)}
-        
-        # Convert schedules to dict for JSON serialization
-        if result["success"] and "schedules" in result:
-            schedules_dict = []
-            for schedule in result["schedules"]:
-                schedules_dict.append({
-                    "recipient_email": schedule.recipient_email,
-                    "send_dates": schedule.send_dates,
-                    "frequency": schedule.frequency,
-                    "invoice_template": schedule.invoice_template,
-                    "amount": schedule.amount,
-                    "client_name": schedule.client_name,
-                    "service_description": schedule.service_description,
-                    "due_days": schedule.due_days,
-                    "metadata": schedule.metadata
-                })
-            result["schedules"] = schedules_dict
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"❌ Error getting schedules by date: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/schedules/create-samples")
-async def create_sample_schedules() -> Dict[str, Any]:
-    """
-    Create sample invoice schedules for testing
-    """
-    try:
-        logger.info("📝 Creating sample invoice schedules...")
-        
-        # result = await agent.create_sample_invoice_schedules()  # TODO: Update to ADK agents
-        result = {
-            "success": False,
-            "message": "Invoice scheduler agent needs to be updated to ADK interface"
-        }
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"❌ Error creating sample schedules: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/schedules/extract")
-async def extract_schedules_from_invoices(request: ScheduleExtractionRequest) -> Dict[str, Any]:
-    """
-    Extract schedule details from database invoices using RAG
-    
-    This endpoint fetches invoices from the database, identifies their contract IDs,
-    and uses RAG to retrieve basic schedule details including:
-    - Number of times invoice should be sent
-    - Frequency (monthly, quarterly, etc.)
-    - Send dates
-    """
-    try:
-        logger.info(f"📊 Extracting schedules from invoices for user: {request.user_id or 'all users'}")
-        
-        # result = await agent.fetch_invoices_and_extract_schedules(user_id=request.user_id)  # TODO: Update to ADK agents
-        result = {
-            "success": False,
-            "message": "Invoice scheduler agent needs to be updated to ADK interface"
-        }
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"❌ Error extracting schedules from invoices: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/gmail/test-email")
 async def test_email_sending(request: EmailTestRequest) -> Dict[str, Any]:

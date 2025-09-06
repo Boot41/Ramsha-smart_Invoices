@@ -99,6 +99,32 @@ class UnifiedPaymentTerms(BaseModel):
                 return None
         return Decimal(str(v))
     
+    @validator('currency', pre=True)
+    def validate_currency(cls, v):
+        if v is None:
+            return CurrencyCode.USD
+        if isinstance(v, str):
+            # Try to match string to enum
+            for currency in CurrencyCode:
+                if currency.value.upper() == v.upper():
+                    return currency
+            # Default to USD if not found
+            return CurrencyCode.USD
+        return v
+    
+    @validator('frequency', pre=True)
+    def validate_frequency(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            # Try to match string to enum
+            for freq in InvoiceFrequency:
+                if freq.value.lower() == v.lower():
+                    return freq
+            # Return None if not found rather than error
+            return None
+        return v
+    
     class Config:
         use_enum_values = True
 
@@ -233,6 +259,45 @@ class UnifiedInvoiceData(BaseModel):
             return UnifiedInvoiceTotals()
         return v
     
+    @validator('status', pre=True)
+    def validate_status(cls, v):
+        if v is None:
+            return InvoiceStatus.DRAFT
+        if isinstance(v, str):
+            # Try to match string to enum
+            for status in InvoiceStatus:
+                if status.value.lower() == v.lower():
+                    return status
+            # Default to DRAFT if not found
+            return InvoiceStatus.DRAFT
+        return v
+    
+    @validator('contract_type', pre=True)
+    def validate_contract_type(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            # Try to match string to enum
+            for ct in ContractType:
+                if ct.value.lower() == v.lower():
+                    return ct
+            # Return None if not found rather than error
+            return None
+        return v
+    
+    @validator('invoice_frequency', pre=True)
+    def validate_invoice_frequency(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            # Try to match string to enum
+            for freq in InvoiceFrequency:
+                if freq.value.lower() == v.lower():
+                    return freq
+            # Return None if not found rather than error
+            return None
+        return v
+    
     def to_legacy_contract_invoice_data(self) -> Dict[str, Any]:
         """Convert to legacy ContractInvoiceData format for backward compatibility"""
         return {
@@ -246,7 +311,7 @@ class UnifiedInvoiceData(BaseModel):
             "effective_date": self.effective_date,
             "payment_terms": self.payment_terms.model_dump() if self.payment_terms else None,
             "services": [service.model_dump() for service in self.services],
-            "invoice_frequency": self.invoice_frequency.value if self.invoice_frequency else None,
+            "invoice_frequency": (self.invoice_frequency.value if hasattr(self.invoice_frequency, 'value') else self.invoice_frequency) if self.invoice_frequency else None,
             "first_invoice_date": self.first_invoice_date,
             "next_invoice_date": self.next_invoice_date,
             "special_terms": self.special_terms,
@@ -280,7 +345,7 @@ class UnifiedInvoiceData(BaseModel):
             "payment_information": self.payment_terms.model_dump() if self.payment_terms else {},
             "services_and_items": [service.model_dump() for service in self.services],
             "invoice_schedule": {
-                "frequency": self.invoice_frequency.value if self.invoice_frequency else None,
+                "frequency": (self.invoice_frequency.value if hasattr(self.invoice_frequency, 'value') else self.invoice_frequency) if self.invoice_frequency else None,
                 "first_invoice_date": str(self.first_invoice_date) if self.first_invoice_date else None,
                 "next_invoice_date": str(self.next_invoice_date) if self.next_invoice_date else None
             },
@@ -455,6 +520,10 @@ class UnifiedInvoiceData(BaseModel):
             elif current[key] is None:
                 current[key] = {}
             current = current[key]
+        
+        # Clean up double-encoded string values (e.g., '"INR"' -> 'INR')
+        if isinstance(value, str) and len(value) >= 2 and value.startswith('"') and value.endswith('"'):
+            value = value[1:-1]  # Remove surrounding quotes
         
         current[keys[-1]] = value
     

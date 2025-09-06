@@ -501,11 +501,11 @@ class DatabaseService:
                     subtotal=float(unified_data.totals.subtotal) if unified_data.totals else 0.0,
                     tax_amount=float(unified_data.totals.tax_amount) if unified_data.totals else 0.0,
                     total_amount=float(unified_data.totals.total_amount) if unified_data.totals else 0.0,
-                    currency=unified_data.payment_terms.currency.value if unified_data.payment_terms else "USD",
+                    currency=(unified_data.payment_terms.currency.value if hasattr(unified_data.payment_terms.currency, 'value') else unified_data.payment_terms.currency) if unified_data.payment_terms else "USD",
                     
                     # Contract details from unified format
                     contract_title=unified_data.contract_title,
-                    contract_type=unified_data.contract_type.value if unified_data.contract_type else None,
+                    contract_type=(unified_data.contract_type.value if hasattr(unified_data.contract_type, 'value') else unified_data.contract_type) if unified_data.contract_type else None,
                     contract_reference=unified_data.contract_reference,
                     
                     # Complete unified invoice data - serialize for JSON storage

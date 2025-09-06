@@ -207,9 +207,9 @@ class InvoiceGeneratorADKAgent(BaseADKAgent):
                 "payment_due_date": unified_invoice.payment_terms.due_date if unified_invoice.payment_terms else None,
                 
                 # Service details
-                "service_description": unified_invoice.service_details.description if unified_invoice.service_details else None,
-                "service_start_date": unified_invoice.service_details.start_date if unified_invoice.service_details else None,
-                "service_end_date": unified_invoice.service_details.end_date if unified_invoice.service_details else None,
+                "service_description": " ".join([s.description for s in unified_invoice.services if s.description]) if unified_invoice.services else None,
+                "service_start_date": unified_invoice.services[0].date_range.start_date if unified_invoice.services and unified_invoice.services[0].date_range else None,
+                "service_end_date": unified_invoice.services[0].date_range.end_date if unified_invoice.services and unified_invoice.services[0].date_range else None,
                 
                 # Full invoice data as JSON
                 "invoice_data_json": unified_invoice.model_dump(),
@@ -275,9 +275,9 @@ class InvoiceGeneratorADKAgent(BaseADKAgent):
                 
                 # Service details
                 "service_details": {
-                    "description": unified_invoice.service_details.description if unified_invoice.service_details else None,
-                    "start_date": unified_invoice.service_details.start_date if unified_invoice.service_details else None,
-                    "end_date": unified_invoice.service_details.end_date if unified_invoice.service_details else None
+                    "description": " ".join([s.description for s in unified_invoice.services if s.description]) if unified_invoice.services else None,
+                    "start_date": unified_invoice.services[0].date_range.start_date if unified_invoice.services and unified_invoice.services[0].date_range else None,
+                    "end_date": unified_invoice.services[0].date_range.end_date if unified_invoice.services and unified_invoice.services[0].date_range else None
                 },
                 
                 # Metadata

@@ -1,0 +1,66 @@
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+*.env
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+.virtualenv
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Testing
+htmlcov/
+.coverage
+.pytest_cache/
+
+# MCP modules (embedded git repos)
+gmail-mcp/
+mcp/
+
+# Credentials and sensitive data
+details/

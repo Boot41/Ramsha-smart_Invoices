@@ -106,12 +106,12 @@ const Dashboard: React.FC = () => {
             >
               Get Started <ArrowRight className="ml-2 w-4 h-4" />
             </Link>
-            <Link 
+            {/* <Link 
               to="/invoices/scheduling" 
               className="border border-white/30 text-white px-6 py-3 rounded-lg font-semibold hover:bg-white/10 transition-colors"
             >
               View Demo
-            </Link>
+            </Link> */}
           </div>
         </div>
       </div>

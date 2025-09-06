@@ -6,6 +6,7 @@ Converts the legacy ValidationAgent to Google ADK pattern
 
 from typing import Dict, Any, Optional, AsyncGenerator
 import logging
+import inspect
 from datetime import datetime
 from enum import Enum
 
@@ -124,7 +125,7 @@ class ValidationADKAgent(BaseADKAgent):
                         {
                             "field_name": issue.field_name,
                             "issue_type": issue.issue_type,
-                            "severity": issue.severity.value,
+                            "severity": issue.severity.value if hasattr(issue.severity, 'value') else issue.severity,
                             "message": issue.message,
                             "current_value": issue.current_value,
                             "suggested_value": issue.suggested_value,
@@ -175,7 +176,7 @@ class ValidationADKAgent(BaseADKAgent):
                 )
             else:
                 # Validation passed, continue to next step
-                self.set_workflow_status(state, ProcessingStatus.SUCCESS)
+                self.set_workflow_status(state, ProcessingStatus.SUCCESS.value)
                 yield self.create_progress_event("✅ Validation passed - proceeding to next step", 95.0)
 
                 workflow_id = state.get('workflow_id')
@@ -211,7 +212,7 @@ class ValidationADKAgent(BaseADKAgent):
             )
 
             self._update_state_with_validation_result(state, error_validation_result)
-            state["processing_status"] = ProcessingStatus.NEEDS_RETRY
+            state["processing_status"] = ProcessingStatus.NEEDS_RETRY.value
 
             # Add error to state
             if "errors" not in state:
@@ -327,12 +328,12 @@ class ValidationADKAgent(BaseADKAgent):
             Updated UnifiedInvoiceData instance
         """
         try:
-            logger.info(f"📝 Applying {len(field_values)} field updates to invoice data")
+            logger.info(f"[{self.__class__.__name__}.{inspect.currentframe().f_code.co_name}] 📝 Applying {len(field_values)} field updates to invoice data")
             
             # Convert any enum values to their string representation
             processed_field_values = {}
             for key, value in field_values.items():
-                if isinstance(value, Enum):
+                if isinstance(value, Enum) and hasattr(value, 'value'):
                     processed_field_values[key] = value.value
                 else:
                     processed_field_values[key] = value
@@ -340,11 +341,11 @@ class ValidationADKAgent(BaseADKAgent):
             # Apply the corrections using the unified format's built-in method
             corrected_unified_data = unified_invoice_data.apply_manual_corrections(processed_field_values)
             
-            logger.info(f"✅ Successfully applied field corrections to invoice data")
+            logger.info(f"[{self.__class__.__name__}.{inspect.currentframe().f_code.co_name}] ✅ Successfully applied field corrections to invoice data")
             return corrected_unified_data
             
         except Exception as e:
-            logger.error(f"❌ Error applying field values to invoice data: {str(e)}")
+            logger.error(f"[{self.__class__.__name__}.{inspect.currentframe().f_code.co_name}] ❌ Error applying field values to invoice data: {str(e)}")
             raise e
 
     
@@ -364,7 +365,7 @@ class ValidationADKAgent(BaseADKAgent):
                 {
                     "field_name": issue.field_name,
                     "issue_type": issue.issue_type,
-                    "severity": issue.severity.value,
+                    "severity": issue.severity.value if hasattr(issue.severity, 'value') else issue.severity,
                     "message": issue.message,
                     "current_value": issue.current_value,
                     "suggested_value": issue.suggested_value,
@@ -425,8 +426,8 @@ class ValidationADKAgent(BaseADKAgent):
                     "suggested_value": issue.suggested_value,
                     "description": issue.message,
                     "issue_type": issue.issue_type,
-                    "severity": issue.severity.value,
-                    "required": issue.severity.value in ["ERROR", "CRITICAL"]
+                    "severity": issue.severity.value if hasattr(issue.severity, 'value') else issue.severity,
+                    "required": (issue.severity.value if hasattr(issue.severity, 'value') else issue.severity) in ["ERROR", "CRITICAL"]
                 })
         
         # Store structured field requirements in state
@@ -435,7 +436,7 @@ class ValidationADKAgent(BaseADKAgent):
         yield self.create_progress_event(f"📝 Identified {len(required_fields)} fields requiring human input", 0.0)
 
         # Set processing status to indicate human input is needed
-        state["processing_status"] = ProcessingStatus.NEEDS_HUMAN_INPUT
+        state["processing_status"] = ProcessingStatus.NEEDS_HUMAN_INPUT.value
 
         # Add to retry reasons
         if "retry_reasons" not in state:
@@ -558,7 +559,7 @@ class ValidationADKAgent(BaseADKAgent):
 
             if validation_result.is_valid or not validation_result.human_input_required:
                 # Validation now passes, continue workflow
-                state["processing_status"] = ProcessingStatus.SUCCESS
+                state["processing_status"] = ProcessingStatus.SUCCESS.value
                 state["human_input_resolved"] = True
                 state["human_input_resolution_timestamp"] = datetime.now().isoformat()
 
@@ -580,7 +581,7 @@ class ValidationADKAgent(BaseADKAgent):
                 )
             else:
                 # Still issues remaining
-                state["processing_status"] = ProcessingStatus.NEEDS_HUMAN_INPUT
+                state["processing_status"] = ProcessingStatus.NEEDS_HUMAN_INPUT.value
                 yield self.create_progress_event("⚠️ Human input provided but validation issues remain", 90.0, {"warning": True})
 
                 yield self.create_progress_event(
@@ -598,7 +599,7 @@ class ValidationADKAgent(BaseADKAgent):
 
         except Exception as e:
             yield self.create_error_event(f"❌ Failed to process human input: {str(e)}", str(e))
-            state["processing_status"] = ProcessingStatus.FAILED
+            state["processing_status"] = ProcessingStatus.FAILED.value
 
             if "errors" not in state:
                 state["errors"] = []

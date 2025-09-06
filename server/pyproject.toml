@@ -67,7 +67,7 @@ Repository = "https://github.com/example/smart-invoice-scheduler.git"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["*"]
+include = ["smart_invoice_scheduler*"]
 
 [tool.black]
 line-length = 88

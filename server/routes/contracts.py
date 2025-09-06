@@ -259,7 +259,7 @@ async def get_user_contracts(
                 for extracted_data in contract.extracted_invoice_data:
                     formatted_contract["extracted_invoice_data"] = {
                         "id": extracted_data.id,
-                        "invoice_frequency": extracted_data.invoice_frequency.value if extracted_data.invoice_frequency else None,
+                        "invoice_frequency": (extracted_data.invoice_frequency.value if hasattr(extracted_data.invoice_frequency, 'value') else extracted_data.invoice_frequency) if extracted_data.invoice_frequency else None,
                         "first_invoice_date": extracted_data.first_invoice_date.isoformat() if extracted_data.first_invoice_date else None,
                         "next_invoice_date": extracted_data.next_invoice_date.isoformat() if extracted_data.next_invoice_date else None,
                         "payment_amount": extracted_data.payment_amount,

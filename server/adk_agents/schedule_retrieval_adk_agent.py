@@ -268,8 +268,11 @@ class ScheduleRetrievalADKAgent(BaseADKAgent):
             query_parts.append(f"payment frequency: {unified_invoice.payment_terms.frequency}")
         
         # Add service type information
-        if unified_invoice.service_details and unified_invoice.service_details.description:
-            query_parts.append(f"service type: {unified_invoice.service_details.description[:100]}")
+        if unified_invoice.services and len(unified_invoice.services) > 0:
+            service_descriptions = [service.description for service in unified_invoice.services if service.description]
+            if service_descriptions:
+                combined_description = " ".join(service_descriptions)
+                query_parts.append(f"service type: {combined_description[:100]}")
         
         # Add contract information
         if contract_id:
@@ -329,7 +332,11 @@ class ScheduleRetrievalADKAgent(BaseADKAgent):
                 score += 10
             
             # Match service category
-            service_desc = unified_invoice.service_details.description if unified_invoice.service_details else ""
+            service_desc = ""
+            if unified_invoice.services and len(unified_invoice.services) > 0:
+                service_descriptions = [service.description for service in unified_invoice.services if service.description]
+                service_desc = " ".join(service_descriptions) if service_descriptions else ""
+            
             schedule_category = schedule.get("metadata", {}).get("category", "")
             if schedule_category.lower() in service_desc.lower():
                 score += 5

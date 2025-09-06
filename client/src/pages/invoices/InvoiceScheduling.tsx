@@ -64,20 +64,22 @@ const InvoiceScheduling: React.FC = () => {
       });
       
       if (response.success) {
-        setExtractedSchedules(response.schedule_extracts);
+        setExtractedSchedules(response.schedule_extracts || []);
         setExtractionStats({
-          totalInvoices: response.total_invoices,
-          processedInvoices: response.processed_invoices,
-          lastExtraction: response.extraction_timestamp
+          totalInvoices: response.total_invoices || 0,
+          processedInvoices: response.processed_invoices || 0,
+          lastExtraction: response.extraction_timestamp || null
         });
         
         console.log('✅ Schedule extraction successful:', response);
       } else {
         setExtractionError(response.message || 'Failed to extract schedules');
+        setExtractedSchedules([]); // Reset to empty array on failure
       }
     } catch (error) {
       console.error('❌ Schedule extraction failed:', error);
       setExtractionError(error instanceof Error ? error.message : 'Unknown error occurred');
+      setExtractedSchedules([]); // Reset to empty array on error
     } finally {
       setIsExtracting(false);
     }
@@ -108,7 +110,7 @@ const InvoiceScheduling: React.FC = () => {
     const events: ScheduleEvent[] = [];
     
     // Add events from existing mock schedules
-    schedules.forEach(schedule => {
+    (schedules || []).forEach(schedule => {
       const agreement = mockRentalAgreements.find(a => a.id === schedule.rentalAgreementId);
       if (!agreement) return;
 
@@ -152,7 +154,7 @@ const InvoiceScheduling: React.FC = () => {
         });
 
         // Reminder events
-        schedule.reminderDays.forEach((days, reminderIndex) => {
+        (schedule.reminderDays || []).forEach((days, reminderIndex) => {
           const reminderDate = new Date(currentDate);
           reminderDate.setDate(currentDate.getDate() - days);
           
@@ -188,7 +190,7 @@ const InvoiceScheduling: React.FC = () => {
     });
 
     // Add events from extracted schedules
-    extractedSchedules.forEach((extractedSchedule, index) => {
+    (extractedSchedules || []).forEach((extractedSchedule, index) => {
       const scheduleDetails = extractedSchedule.schedule_details;
       
       if (scheduleDetails.found_schedule_info && scheduleDetails.send_dates?.length > 0) {
@@ -381,7 +383,7 @@ const InvoiceScheduling: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-slate-600">Active</p>
                 <p className="text-2xl font-bold text-green-600">
-                  {schedules.filter(s => s.isActive).length}
+                  {(schedules || []).filter(s => s.isActive).length}
                 </p>
               </div>
               <div className="p-2 bg-green-100 rounded-lg">
@@ -532,7 +534,7 @@ const InvoiceScheduling: React.FC = () => {
                 <div className="flex items-center justify-between p-4 bg-purple-50 rounded-lg">
                   <div>
                     <p className="text-sm font-medium text-purple-900">
-                      Found {extractedSchedules.filter(s => s.schedule_details.found_schedule_info).length} schedules
+                      Found {(extractedSchedules || []).filter(s => s.schedule_details.found_schedule_info).length} schedules
                       with AI-extracted data
                     </p>
                     <p className="text-xs text-purple-700 mt-1">
@@ -549,7 +551,7 @@ const InvoiceScheduling: React.FC = () => {
 
                 {/* Extracted Schedules Grid */}
                 <div className="grid gap-4 max-h-96 overflow-y-auto">
-                  {extractedSchedules.map((schedule) => (
+                  {(extractedSchedules || []).map((schedule) => (
                     <Card 
                       key={schedule.invoice_id} 
                       className={`cursor-pointer transition-all hover:shadow-md ${
@@ -704,7 +706,7 @@ const InvoiceScheduling: React.FC = () => {
                 <div>
                   <h4 className="font-semibold text-slate-900 mb-3">Send Dates</h4>
                   <div className="flex flex-wrap gap-2">
-                    {selectedExtractedSchedule.schedule_details.send_dates.map((date, index) => (
+                    {(selectedExtractedSchedule.schedule_details.send_dates || []).map((date, index) => (
                       <Badge key={index} variant="outline" className="text-xs">
                         {new Date(date).toLocaleDateString()}
                       </Badge>
@@ -771,7 +773,7 @@ const InvoiceScheduling: React.FC = () => {
                   <div>
                     <label className="text-sm font-medium text-slate-600">Reminder Days</label>
                     <div className="flex space-x-2 mt-1">
-                      {selectedSchedule.reminderDays.map((days, index) => (
+                      {(selectedSchedule.reminderDays || []).map((days, index) => (
                         <Badge key={index} variant="secondary">{days} days before</Badge>
                       ))}
                     </div>

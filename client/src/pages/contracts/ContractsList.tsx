@@ -50,6 +50,7 @@ const ContractsList: React.FC = () => {
   // Workflow state - simplified for redirect approach
   const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(null);
   const [contractName, setContractName] = useState<string>('');
+  const [loadingContracts, setLoadingContracts] = useState<Set<string>>(new Set());
 
   // Removed polling logic - workflows now redirect to dedicated status page
 
@@ -271,6 +272,11 @@ const ContractsList: React.FC = () => {
       return;
     }
 
+    const contractId = contract.id || contract.file_id || contract.contract_id || contract.name;
+    
+    // Add this contract to loading state
+    setLoadingContracts(prev => new Set(prev).add(contractId));
+
     try {
       console.log('Starting agentic workflow for contract:', contract);
       
@@ -322,6 +328,13 @@ const ContractsList: React.FC = () => {
       console.log('Agentic workflow started successfully:', result);
     } catch (error) {
       console.error('Failed to start agentic workflow:', error);
+    } finally {
+      // Remove this contract from loading state
+      setLoadingContracts(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(contractId);
+        return newSet;
+      });
     }
   };
 
@@ -633,29 +646,18 @@ const ContractsList: React.FC = () => {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            console.log('View contract:', contract);
-                          }}
-                        >
-                          View
-                        </Button>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleStartAgenticWorkflow(contract);
-                          }}
-                          disabled={isLoading}
-                        >
-                          {isLoading ? 'Starting...' : 'Generate Invoice'}
-                        </Button>
-                      </div>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        className="px-6 py-3 text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartAgenticWorkflow(contract);
+                        }}
+                        disabled={loadingContracts.has(contract.id || contract.file_id || contract.contract_id || contract.name)}
+                      >
+                        {loadingContracts.has(contract.id || contract.file_id || contract.contract_id || contract.name) ? 'Starting...' : 'Generate Invoice'}
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

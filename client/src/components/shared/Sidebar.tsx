@@ -45,6 +45,7 @@ const menuItems: MenuItemType[] = [
     children: [
       { id: 'all-invoices', label: 'All Invoices', path: '/invoices' },
       { id: 'invoice-templates', label: 'Templates', path: '/invoices/templates' },
+      { id: 'ui-generator', label: 'UI Generator', path: '/invoices/ui-generator' },
       { id: 'invoice-scheduling', label: 'Scheduling', path: '/invoices/scheduling' }
     ]
   },

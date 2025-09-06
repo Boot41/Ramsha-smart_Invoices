@@ -659,10 +659,14 @@ class InvoiceDataValidationService:
         
         for issue in human_input_issues:
             if issue.issue_type == "missing_required":
+                # Get field type safely
+                field_type = self.required_fields.get(issue.field_name, {}).get("type", FieldType.TEXT)
+                type_value = field_type.value if hasattr(field_type, 'value') else str(field_type)
+                
                 missing_fields.append({
                     "field": issue.field_name,
                     "description": self.required_fields.get(issue.field_name, {}).get("description", ""),
-                    "type": self.required_fields.get(issue.field_name, {}).get("type", FieldType.TEXT).value,
+                    "type": type_value,
                     "message": issue.message
                 })
             else:
@@ -672,7 +676,7 @@ class InvoiceDataValidationService:
                     "suggested_value": issue.suggested_value,
                     "issue_type": issue.issue_type,
                     "message": issue.message,
-                    "severity": issue.severity.value
+                    "severity": issue.severity.value if hasattr(issue.severity, 'value') else issue.severity
                 })
         
         if missing_fields:

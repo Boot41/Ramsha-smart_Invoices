@@ -102,7 +102,7 @@ class BaseADKAgent(BaseAgent):
             state["errors"].append(error_info)
             
             # Update status
-            state["processing_status"] = ProcessingStatus.FAILED
+            state["processing_status"] = ProcessingStatus.FAILED.value
             
             # Update context state
             context.state.update(state)

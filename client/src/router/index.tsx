@@ -11,6 +11,7 @@ import InvoiceTemplatesShowcase from '../pages/invoices/InvoiceTemplatesShowcase
 import InvoiceDataValidation from '../pages/invoices/InvoiceDataValidation';
 import InvoicesPage from '../pages/invoices/InvoicesPage';
 import { ContractsList } from '../pages/contracts';
+import { UIGenerator } from '../pages/ui-generator';
 import { Login, Signup, EnterpriseSignup } from '../pages/auth';
 import BotsList from '../pages/bots/BotsList';
 import Marketplace from '../pages/marketplace/Marketplace';
@@ -46,6 +47,10 @@ export const router = createBrowserRouter([
           {
             path: 'templates-list',
             element: <InvoiceTemplatesList />
+          },
+          {
+            path: 'ui-generator',
+            element: <UIGenerator />
           },
           {
             path: 'scheduling',

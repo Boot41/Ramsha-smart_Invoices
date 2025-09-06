@@ -6,17 +6,9 @@ adk_agents/contract_processing_adk_agent.py
 adk_agents/correction_adk_agent.py
 adk_agents/invoice_generator_adk_agent.py
 adk_agents/orchestrator_adk_workflow.py
-adk_agents/validation_adk_agent.py
-agents/__init__.py
-agents/base_agent.py
-agents/contract_processing_agent.py
-agents/correction_agent.py
-agents/invoice_design_agent.py
-agents/invoice_generator_agent.py
-agents/invoice_scheduler_agent.py
-agents/orchestrator_agent.py
-agents/ui_invoice_generator_agent.py
-agents/validation_agent.py
+adk_agents/schedule_retrieval_adk_agent.py
+adk_agents/ui_generation_adk_agent.py
+adk_agents/validation_adk_agents.py
 controller/__init__.py
 controller/auth_controller.py
 controller/document_controller.py
@@ -39,7 +31,6 @@ models/llm/embedding.py
 routes/__init__.py
 routes/adk_orchestrator.py
 routes/auth.py
-routes/bots.py
 routes/contracts.py
 routes/documents.py
 routes/emails.py
@@ -51,9 +42,11 @@ routes/invoice_templates.py
 routes/invoices.py
 routes/llm.py
 routes/mcp.py
+routes/natural_language_validation.py
 routes/orchestrator.py
 routes/routes.py
 routes/templates.py
+routes/ui_generator.py
 routes/users.py
 routes/validation.py
 schemas/__init__.py
@@ -81,6 +74,7 @@ services/gmail_mcp_service.py
 services/internal_http_client.py
 services/llm_service.py
 services/mcp_service.py
+services/natural_language_correction_service.py
 services/orchestrator_service.py
 services/pdf_service.py
 services/pinecone_service.py
@@ -89,6 +83,7 @@ services/template_service.py
 services/user_service.py
 services/user_service_db.py
 services/validation_service.py
+smart_invoice_scheduler/__init__.py
 smart_invoice_scheduler.egg-info/PKG-INFO
 smart_invoice_scheduler.egg-info/SOURCES.txt
 smart_invoice_scheduler.egg-info/dependency_links.txt
