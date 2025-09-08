@@ -3,21 +3,31 @@ Main FastAPI application entry point for Smart Invoice Scheduler
 """
 
 import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
 
-from routes.routes import routes_router
 from utils.logging_config import setup_logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan context manager"""
-    # Startup
+    # Startup - minimal initialization for faster startup
     setup_logging()
     logging.info("🚀 Smart Invoice Scheduler starting up...")
+
+    # Import and include routes after app startup to avoid blocking startup
+    try:
+        from routes.routes import routes_router  # pylint: disable=import-outside-toplevel
+        app.include_router(routes_router)
+        logging.info("✅ Routes loaded successfully")
+    except Exception as exc:  # pylint: disable=broad-except
+        logging.error("❌ Error loading routes: %s", exc)
+        # Continue anyway - basic endpoints will still work
+
     yield
     # Shutdown
     logging.info("🛑 Smart Invoice Scheduler shutting down...")
@@ -39,9 +49,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Include all routes
-app.include_router(routes_router)
 
 # Serve static files (React frontend)
 try:
