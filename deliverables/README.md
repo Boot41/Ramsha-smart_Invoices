@@ -2,6 +2,8 @@
 ## Video Demo of the product
 https://www.loom.com/share/a786f9466e854f38ad5fc18a66fa0d7c?sid=350bf5b8-22ff-45b9-89e8-240f28a1c097
 
+## Project Link
+https://smart-invoice-scheduler-410805250566.us-central1.run.app/dashboard
 
 ## 🚀 Project Overview
 
